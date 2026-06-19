@@ -2,8 +2,7 @@ package com.mcpscanner;
 
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.collaborator.Collaborator;
-import burp.api.montoya.collaborator.CollaboratorClient;
+import com.mcpscanner.checks.CollaboratorPoller;
 import com.mcpscanner.auth.CurrentAuthHolder;
 import com.mcpscanner.auth.oauth.BrowserLauncher;
 import com.mcpscanner.auth.oauth.CallbackListener;
@@ -35,7 +34,6 @@ import com.mcpscanner.ui.McpScannerTab;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.function.Supplier;
 
 import javax.swing.SwingUtilities;
 
@@ -71,11 +69,17 @@ public class McpScannerExtension implements BurpExtension {
 
         CurrentAuthHolder authHolder = new CurrentAuthHolder();
         CurrentSelectionHolder selectionHolder = new CurrentSelectionHolder();
-        Supplier<CollaboratorClient> collaboratorSupplier = collaboratorSupplier(api, eventLog);
+        // One shared CollaboratorClient and one scheduled poller across every scan invocation and
+        // host, per Burp's recommended Collaborator integration model. The RCE check fires probes
+        // synchronously and registers them; the poller reports confirmed issues asynchronously to
+        // the site map, so the scanner thread never blocks polling Collaborator.
+        CollaboratorPoller collaboratorPoller = new CollaboratorPoller(
+                api::collaborator, eventLog, issue -> api.siteMap().add(issue));
+        collaboratorPoller.start();
         JsonRpcDiscoveryResponseScanner discoveryResponseScanner =
                 new JsonRpcDiscoveryResponseScanner(checkSettings, eventLog, contentDedup);
         ScanCheckRegistry checkRegistry = new ScanCheckRegistry(
-                authHolder, checkSettings, eventLog, collaboratorSupplier, selectionHolder,
+                authHolder, checkSettings, eventLog, collaboratorPoller, selectionHolder,
                 discoveryResponseScanner, clientManager.scannerSession()::transportType,
                 clientManager.scannerSession()::probeBaselineService);
         checkRegistry.registerWith(api);
@@ -90,6 +94,11 @@ public class McpScannerExtension implements BurpExtension {
         clientManager.addDisconnectListener(authHolder::clear);
         clientManager.addDisconnectListener(selectionHolder::clear);
         clientManager.addDisconnectListener(contentDedup::clear);
+        // The Collaborator poller is deliberately NOT cleared on disconnect: out-of-band
+        // interactions outlive the session, so wiping pending contexts here would silently drop a
+        // confirmed RCE finding. It self-prunes via TTL + a size cap (see CollaboratorPoller) and
+        // is stopped on extension unload. clearSessionState() below still clears the RCE check's
+        // own HostDedup so a reconnect re-probes — that is the session-scoped state, kept separate.
         clientManager.addDisconnectListener(scanLauncher::clearActiveScans);
         clientManager.addDisconnectListener(checkRegistry::clearSessionState);
 
@@ -124,6 +133,7 @@ public class McpScannerExtension implements BurpExtension {
                 mcpScannerTab.shutdown();
                 clientManager.shutdown();
                 sseProxy.stop();
+                collaboratorPoller.shutdown();
                 eventLog.shutdown();
             });
         } catch (IOException e) {
@@ -135,6 +145,7 @@ public class McpScannerExtension implements BurpExtension {
             api.extension().registerUnloadingHandler(() -> {
                 mcpScannerTab.shutdown();
                 clientManager.shutdown();
+                collaboratorPoller.shutdown();
                 eventLog.shutdown();
             });
         }
@@ -142,25 +153,6 @@ public class McpScannerExtension implements BurpExtension {
         api.extension().registerUnloadingHandler(DefaultSuspiciousDestinationGate::shutdownSharedDnsExecutor);
 
         api.logging().logToOutput(ExtensionMetadata.NAME + " loaded successfully");
-    }
-
-    private static Supplier<CollaboratorClient> collaboratorSupplier(MontoyaApi api,
-                                                                     McpEventLog eventLog) {
-        return () -> createCollaboratorClient(api, eventLog);
-    }
-
-    private static CollaboratorClient createCollaboratorClient(MontoyaApi api, McpEventLog eventLog) {
-        try {
-            Collaborator collaborator = api.collaborator();
-            if (collaborator == null) {
-                return null;
-            }
-            return collaborator.createClient();
-        } catch (RuntimeException ex) {
-            eventLog.info("Collaborator unavailable in this Burp edition: "
-                    + ex.getClass().getSimpleName());
-            return null;
-        }
     }
 
     private static McpScannerTab registerSuiteTabOnEdt(MontoyaApi api,

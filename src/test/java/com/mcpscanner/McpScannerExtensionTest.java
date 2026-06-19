@@ -1,7 +1,7 @@
 package com.mcpscanner;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.collaborator.CollaboratorClient;
+import com.mcpscanner.checks.CollaboratorPoller;
 import burp.api.montoya.extension.Extension;
 import burp.api.montoya.extension.ExtensionUnloadingHandler;
 import burp.api.montoya.http.Http;
@@ -26,7 +26,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.awt.*;
 import java.lang.reflect.Field;
-import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -164,8 +163,8 @@ class McpScannerExtensionTest {
     void extensionLoadsCleanlyWhenCollaboratorFactoryThrows() throws Exception {
         // Burp Community Edition throws when api.collaborator() is
         // called. The extension must boot without propagating, must still
-        // register the RCE check, and the wired supplier must return null
-        // (not throw) when later invoked by the scanner.
+        // register the RCE check, and the wired poller must return a null
+        // shared client (not throw) when later asked for one by the scanner.
         when(api.collaborator()).thenThrow(new IllegalStateException("Collaborator requires Burp Pro"));
 
         assertThatCode(() -> sut.initialize(api)).doesNotThrowAnyException();
@@ -179,17 +178,16 @@ class McpScannerExtensionTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("RCE check not registered"));
 
-        Supplier<CollaboratorClient> supplier = extractCollaboratorSupplier(rceCheck);
-        assertThat(supplier).isNotNull();
-        assertThatCode(supplier::get).doesNotThrowAnyException();
-        assertThat(supplier.get()).isNull();
+        CollaboratorPoller poller = extractPoller(rceCheck);
+        assertThat(poller).isNotNull();
+        assertThatCode(poller::sharedClient).doesNotThrowAnyException();
+        assertThat(poller.sharedClient()).isNull();
     }
 
-    @SuppressWarnings("unchecked")
-    private static Supplier<CollaboratorClient> extractCollaboratorSupplier(McpActiveToolArgumentRceCheck check)
+    private static CollaboratorPoller extractPoller(McpActiveToolArgumentRceCheck check)
             throws Exception {
-        Field field = McpActiveToolArgumentRceCheck.class.getDeclaredField("collaboratorSupplier");
+        Field field = McpActiveToolArgumentRceCheck.class.getDeclaredField("poller");
         field.setAccessible(true);
-        return (Supplier<CollaboratorClient>) field.get(check);
+        return (CollaboratorPoller) field.get(check);
     }
 }

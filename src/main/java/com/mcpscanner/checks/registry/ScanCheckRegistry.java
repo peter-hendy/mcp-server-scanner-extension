@@ -1,7 +1,7 @@
 package com.mcpscanner.checks.registry;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.collaborator.CollaboratorClient;
+import com.mcpscanner.checks.CollaboratorPoller;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.scanner.scancheck.ActiveScanCheck;
 import com.mcpscanner.auth.AuthStrategy;
@@ -37,49 +37,49 @@ public final class ScanCheckRegistry {
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings) {
-        this(authSupplier, settings, null, () -> null, ScanInventory::empty);
+        this(authSupplier, settings, null, (CollaboratorPoller) null, ScanInventory::empty);
     }
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog) {
-        this(authSupplier, settings, eventLog, () -> null, ScanInventory::empty);
+        this(authSupplier, settings, eventLog, (CollaboratorPoller) null, ScanInventory::empty);
     }
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog,
-                             Supplier<CollaboratorClient> collaboratorSupplier) {
-        this(authSupplier, settings, eventLog, collaboratorSupplier, ScanInventory::empty);
+                             CollaboratorPoller poller) {
+        this(authSupplier, settings, eventLog, poller, ScanInventory::empty);
     }
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog,
-                             Supplier<CollaboratorClient> collaboratorSupplier,
+                             CollaboratorPoller poller,
                              Supplier<ScanInventory> selectedInventorySupplier) {
-        this(authSupplier, settings, eventLog, collaboratorSupplier, selectedInventorySupplier,
+        this(authSupplier, settings, eventLog, poller, selectedInventorySupplier,
                 new JsonRpcDiscoveryResponseScanner(settings, eventLog));
     }
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog,
-                             Supplier<CollaboratorClient> collaboratorSupplier,
+                             CollaboratorPoller poller,
                              Supplier<ScanInventory> selectedInventorySupplier,
                              JsonRpcDiscoveryResponseScanner discoveryContentScanner) {
-        this(authSupplier, settings, eventLog, collaboratorSupplier, selectedInventorySupplier,
+        this(authSupplier, settings, eventLog, poller, selectedInventorySupplier,
                 discoveryContentScanner, () -> null);
     }
 
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog,
-                             Supplier<CollaboratorClient> collaboratorSupplier,
+                             CollaboratorPoller poller,
                              Supplier<ScanInventory> selectedInventorySupplier,
                              JsonRpcDiscoveryResponseScanner discoveryContentScanner,
                              Supplier<TransportType> transportSupplier) {
-        this(authSupplier, settings, eventLog, collaboratorSupplier, selectedInventorySupplier,
+        this(authSupplier, settings, eventLog, poller, selectedInventorySupplier,
                 discoveryContentScanner, transportSupplier, Optional::empty);
     }
 
@@ -98,20 +98,21 @@ public final class ScanCheckRegistry {
     public ScanCheckRegistry(Supplier<AuthStrategy> authSupplier,
                              ScanCheckSettings settings,
                              McpEventLog eventLog,
-                             Supplier<CollaboratorClient> collaboratorSupplier,
+                             CollaboratorPoller poller,
                              Supplier<ScanInventory> selectedInventorySupplier,
                              JsonRpcDiscoveryResponseScanner discoveryContentScanner,
                              Supplier<TransportType> transportSupplier,
                              Supplier<Optional<HttpService>> probeServiceSupplier) {
         Objects.requireNonNull(authSupplier, "authSupplier must not be null");
         Objects.requireNonNull(settings, "settings must not be null");
-        Objects.requireNonNull(collaboratorSupplier, "collaboratorSupplier must not be null");
+        // poller may be null: Collaborator is unavailable in non-Pro editions, and the RCE check
+        // degrades to a clean no-op when its poller is absent.
         Objects.requireNonNull(selectedInventorySupplier, "selectedInventorySupplier must not be null");
         Objects.requireNonNull(discoveryContentScanner, "discoveryContentScanner must not be null");
         Objects.requireNonNull(transportSupplier, "transportSupplier must not be null");
         Objects.requireNonNull(probeServiceSupplier, "probeServiceSupplier must not be null");
         this.settings = settings;
-        this.checks = buildChecks(authSupplier, settings, eventLog, collaboratorSupplier,
+        this.checks = buildChecks(authSupplier, settings, eventLog, poller,
                 selectedInventorySupplier, discoveryContentScanner, transportSupplier, probeServiceSupplier);
     }
 
@@ -168,7 +169,7 @@ public final class ScanCheckRegistry {
     private static List<ManagedCheck> buildChecks(Supplier<AuthStrategy> authSupplier,
                                                   ScanCheckSettings settings,
                                                   McpEventLog eventLog,
-                                                  Supplier<CollaboratorClient> collaboratorSupplier,
+                                                  CollaboratorPoller poller,
                                                   Supplier<ScanInventory> selectedInventorySupplier,
                                                   JsonRpcDiscoveryResponseScanner discoveryContentScanner,
                                                   Supplier<TransportType> transportSupplier,
@@ -187,7 +188,7 @@ public final class ScanCheckRegistry {
         checks.add(new McpActiveDcrMisconfigurationCheck(settings, eventLog, authSupplier));
         checks.add(new McpActiveConsentPageReflectedXssCheck(settings, eventLog, authSupplier));
         checks.add(new McpActiveToolArgumentPathTraversalCheck(settings, eventLog, selectedInventorySupplier));
-        checks.add(new McpActiveToolArgumentRceCheck(settings, eventLog, collaboratorSupplier, selectedInventorySupplier));
+        checks.add(new McpActiveToolArgumentRceCheck(settings, eventLog, poller, selectedInventorySupplier));
         checks.add(discoveryContentScanner);
         checks.add(new JsonRpcResponseContentScanner(settings, eventLog));
         return List.copyOf(checks);
