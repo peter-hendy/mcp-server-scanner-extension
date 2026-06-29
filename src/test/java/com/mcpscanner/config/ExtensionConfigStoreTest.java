@@ -43,6 +43,23 @@ class ExtensionConfigStoreTest {
     }
 
     @Test
+    void mcpProxyEnabledDefaultsFalseWhenUnset() {
+        when(store.getBoolean("mcp.proxy.enabled")).thenReturn(null);
+
+        assertThat(config.mcpProxyEnabled()).isFalse();
+    }
+
+    @Test
+    void mcpProxyEnabledRoundTrips() {
+        config.setMcpProxyEnabled(true);
+        verify(store).setBoolean("mcp.proxy.enabled", true);
+
+        when(store.getBoolean("mcp.proxy.enabled")).thenReturn(true);
+
+        assertThat(config.mcpProxyEnabled()).isTrue();
+    }
+
+    @Test
     void roundTripsScopeListAsJson() {
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         config.setScopes(List.of(

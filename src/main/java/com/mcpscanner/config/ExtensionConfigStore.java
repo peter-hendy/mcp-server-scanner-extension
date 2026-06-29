@@ -23,6 +23,7 @@ public final class ExtensionConfigStore {
     private static final String KEY_OAUTH_SKIP_DCR = "mcp.oauth.skip_dcr";
     private static final String KEY_OAUTH_CLIENT_ID = "mcp.oauth.client_id";
     private static final String KEY_OAUTH_SCOPES = "mcp.oauth.scopes";
+    private static final String KEY_MCP_PROXY_ENABLED = "mcp.proxy.enabled";
     private static final String KEY_CHECK_PREFIX = "mcp.check.";
     private static final String KEY_CHECK_ENABLED_SUFFIX = ".enabled";
     private static final String KEY_SCOPE_PREFIX = "mcp.scope.";
@@ -92,6 +93,15 @@ public final class ExtensionConfigStore {
 
     public void setOauthSkipDcr(boolean skip) {
         store.setBoolean(KEY_OAUTH_SKIP_DCR, skip);
+    }
+
+    public boolean mcpProxyEnabled() {
+        Boolean enabled = store.getBoolean(KEY_MCP_PROXY_ENABLED);
+        return enabled != null && enabled;
+    }
+
+    public void setMcpProxyEnabled(boolean enabled) {
+        store.setBoolean(KEY_MCP_PROXY_ENABLED, enabled);
     }
 
     public String oauthClientId() {
