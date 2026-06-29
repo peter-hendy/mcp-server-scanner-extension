@@ -1,6 +1,8 @@
 package com.mcpscanner.proxy;
 
 import burp.api.montoya.core.Annotations;
+import burp.api.montoya.core.ToolSource;
+import burp.api.montoya.core.ToolType;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.handler.HttpRequestToBeSent;
 import burp.api.montoya.http.handler.HttpResponseReceived;
@@ -9,6 +11,9 @@ import burp.api.montoya.http.handler.ResponseReceivedAction;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import com.mcpscanner.client.McpScannerSession;
 import com.mcpscanner.client.TransportType;
+import com.mcpscanner.proxy.observe.BurpTrafficObserver;
+import com.mcpscanner.proxy.observe.ScannerFamilySwapPolicy;
+import com.mcpscanner.proxy.observe.SwapAllMatchingTools;
 import com.mcpscanner.testutil.MontoyaTestFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +42,8 @@ class McpHttpHandlerTest {
     @Mock private HttpRequest rewrittenRequest;
     @Mock private HttpResponseReceived response;
     @Mock private Annotations annotations;
+    @Mock private BurpTrafficObserver observer;
+    @Mock private ToolSource toolSource;
 
     private McpHttpHandler handler;
 
@@ -46,7 +54,7 @@ class McpHttpHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new McpHttpHandler(scannerSession, proxy);
+        handler = new McpHttpHandler(scannerSession, proxy, new SwapAllMatchingTools(), observer);
     }
 
     @Test
@@ -312,6 +320,110 @@ class McpHttpHandlerTest {
         ResponseReceivedAction result = handler.handleHttpResponseReceived(response);
 
         assertThat(result.response()).isSameAs(response);
+    }
+
+    /**
+     * Compatibility invariant: with {@link SwapAllMatchingTools} the handler must reach its swap
+     * decision without ever consulting the request's {@code toolSource()}. All tool logic lives
+     * inside the injected policy/observer; the handler stays tool-agnostic so off-mode is
+     * byte-identical to today.
+     */
+    @Test
+    void defaultPath_doesNotConsultToolSource() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        when(proxy.port()).thenReturn(9999);
+        stubRequest("localhost", 3001, "/mcp");
+        when(request.withService(any(HttpService.class))).thenReturn(rewrittenRequest);
+
+        handler.handleHttpRequestToBeSent(request);
+
+        verify(request, never()).toolSource();
+    }
+
+    /**
+     * With {@link SwapAllMatchingTools} every matching request is swapped, so the observe branch is
+     * never reached and the injected observer is never touched.
+     */
+    @Test
+    void defaultObserver_neverObserves() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        when(proxy.port()).thenReturn(9999);
+        stubRequest("localhost", 3001, "/mcp");
+        when(request.withService(any(HttpService.class))).thenReturn(rewrittenRequest);
+
+        RequestToBeSentAction result = handler.handleHttpRequestToBeSent(request);
+
+        assertThat(result.request()).isSameAs(rewrittenRequest);
+        verifyNoInteractions(observer);
+    }
+
+    /**
+     * When the scanner-family policy is injected, a matching request from the scanner family
+     * (Repeater here) is swapped to the loopback exactly as before, and the observer is not invoked.
+     */
+    @Test
+    void scannerFamilyPolicy_swapsScannerFamilyRequest_andDoesNotObserve() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        when(proxy.port()).thenReturn(9999);
+        stubRequest("localhost", 3001, "/mcp");
+        when(request.withService(any(HttpService.class))).thenReturn(rewrittenRequest);
+        stubToolSource(true);
+
+        RequestToBeSentAction result = scannerFamilyHandler().handleHttpRequestToBeSent(request);
+
+        assertThat(result.request()).isSameAs(rewrittenRequest);
+        verify(request).withService(any(HttpService.class));
+        verifyNoInteractions(observer);
+    }
+
+    /**
+     * When the scanner-family policy is injected, a matching request from a non-scanner-family tool
+     * (live Proxy traffic) is NOT swapped — it continues with the original request — and is handed to
+     * the observer instead.
+     */
+    @Test
+    void scannerFamilyPolicy_observesMatchingNonScannerFamilyRequest_withoutSwapping() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        stubRequest("localhost", 3001, "/mcp");
+        stubToolSource(false);
+
+        RequestToBeSentAction result = scannerFamilyHandler().handleHttpRequestToBeSent(request);
+
+        assertThat(result.request()).isSameAs(request);
+        verify(request, never()).withService(any(HttpService.class));
+        verify(observer).observeRequest(request);
+    }
+
+    /**
+     * When the scanner-family policy is injected, a non-matching request (different path) passes
+     * through untouched and the observer is never consulted — only matching-but-not-swapped requests
+     * are observed.
+     */
+    @Test
+    void scannerFamilyPolicy_passesThroughNonMatchingRequest_withoutObserving() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        stubRequest("localhost", 3001, "/.well-known/oauth-protected-resource");
+
+        RequestToBeSentAction result = scannerFamilyHandler().handleHttpRequestToBeSent(request);
+
+        assertThat(result.request()).isSameAs(request);
+        verify(request, never()).withService(any(HttpService.class));
+        verifyNoInteractions(observer);
+    }
+
+    private McpHttpHandler scannerFamilyHandler() {
+        return new McpHttpHandler(scannerSession, proxy, new ScannerFamilySwapPolicy(), observer);
+    }
+
+    private void stubToolSource(boolean isFromScannerFamily) {
+        when(toolSource.isFromTool(ToolType.REPEATER, ToolType.SCANNER, ToolType.INTRUDER))
+                .thenReturn(isFromScannerFamily);
+        when(request.toolSource()).thenReturn(toolSource);
     }
 
     private void stubRequest(String host, int port, String pathWithoutQuery) {

@@ -8,6 +8,8 @@ import burp.api.montoya.http.handler.RequestToBeSentAction;
 import burp.api.montoya.http.handler.ResponseReceivedAction;
 import com.mcpscanner.client.McpScannerSession;
 import com.mcpscanner.client.TransportType;
+import com.mcpscanner.proxy.observe.BurpTrafficObserver;
+import com.mcpscanner.proxy.observe.SwapPolicy;
 
 import java.net.URI;
 import java.util.Objects;
@@ -36,19 +38,27 @@ public class McpHttpHandler implements HttpHandler {
 
     private final McpScannerSession scannerSession;
     private final SseProxyServer proxy;
+    private final SwapPolicy swapPolicy;
+    private final BurpTrafficObserver observer;
 
-    public McpHttpHandler(McpScannerSession scannerSession, SseProxyServer proxy) {
+    public McpHttpHandler(McpScannerSession scannerSession, SseProxyServer proxy,
+                          SwapPolicy swapPolicy, BurpTrafficObserver observer) {
         this.scannerSession = scannerSession;
         this.proxy = proxy;
+        this.swapPolicy = swapPolicy;
+        this.observer = observer;
     }
 
     @Override
     public RequestToBeSentAction handleHttpRequestToBeSent(HttpRequestToBeSent request) {
         URI target = proxyTarget(request);
-        if (target != null) {
+        if (target != null && swapPolicy.shouldSwap(request)) {
             request.annotations().setNotes("→ " + target.getHost());
             return RequestToBeSentAction.continueWith(
                     request.withService(HttpService.httpService("127.0.0.1", proxy.port(), false)));
+        }
+        if (target != null) {
+            observer.observeRequest(request);
         }
         return RequestToBeSentAction.continueWith(request);
     }

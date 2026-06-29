@@ -24,6 +24,8 @@ import burp.api.montoya.scanner.BuiltInAuditConfiguration;
 import com.mcpscanner.client.McpClientManager;
 import com.mcpscanner.proxy.McpHttpHandler;
 import com.mcpscanner.proxy.SseProxyServer;
+import com.mcpscanner.proxy.observe.NoopBurpTrafficObserver;
+import com.mcpscanner.proxy.observe.SwapAllMatchingTools;
 import com.mcpscanner.scan.CurrentSelectionHolder;
 import com.mcpscanner.scan.JsonRpcRequestBuilder;
 import com.mcpscanner.scan.McpInsertionPointProvider;
@@ -119,7 +121,9 @@ public class McpScannerExtension implements BurpExtension {
             sseProxy.start();
             clientManager.scannerSession().setSseProxyPort(sseProxy::port);
             clientManager.addDisconnectListener(sseProxy::resetScanSession);
-            api.http().registerHttpHandler(new McpHttpHandler(clientManager.scannerSession(), sseProxy));
+            api.http().registerHttpHandler(new McpHttpHandler(
+                    clientManager.scannerSession(), sseProxy,
+                    new SwapAllMatchingTools(), new NoopBurpTrafficObserver()));
             api.extension().registerUnloadingHandler(() -> {
                 mcpScannerTab.shutdown();
                 clientManager.shutdown();
