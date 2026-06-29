@@ -1,5 +1,6 @@
 package com.mcpscanner.checks.content;
 
+import com.mcpscanner.proxy.observe.ExposureSurface;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -37,6 +38,33 @@ class ContentFindingDedupTest {
         dedup.clear();
 
         assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test")).isTrue();
+    }
+
+    @Test
+    void discoveryFinding_reportedOnce() {
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.DISCOVERY_METADATA)).isTrue();
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.DISCOVERY_METADATA)).isFalse();
+    }
+
+    @Test
+    void sameValue_acrossSurfaces_reportsTwice() {
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.DISCOVERY_METADATA)).isTrue();
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.DISCOVERY_METADATA)).isFalse();
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.LIVE_RUNTIME_OUTPUT)).isTrue();
+    }
+
+    @Test
+    void legacyClaimSharesNamespaceWithDiscoverySurface() {
+        // The no-surface overloads delegate to DISCOVERY_METADATA, so a legacy claim and a
+        // discovery-surface claim for the same key must collapse to a single finding.
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test")).isTrue();
+        assertThat(dedup.tryClaim("rule", "AKIA123", "https://mcp.example.test",
+                ExposureSurface.DISCOVERY_METADATA)).isFalse();
     }
 
     @Test

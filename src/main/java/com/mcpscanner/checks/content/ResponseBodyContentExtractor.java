@@ -37,9 +37,30 @@ public final class ResponseBodyContentExtractor {
         }
         JsonNode params = parseRequestParams(rr);
         return switch (kind) {
-            case TOOL_CALL -> toolCallFields(result, textOrEmpty(params, "name"));
-            case RESOURCE_READ -> resourceReadFields(result, textOrEmpty(params, "uri"));
-            case PROMPT_GET -> promptGetFields(result, textOrEmpty(params, "name"));
+            case TOOL_CALL -> extractFromResult(kind, result, textOrEmpty(params, "name"));
+            case RESOURCE_READ -> extractFromResult(kind, result, textOrEmpty(params, "uri"));
+            case PROMPT_GET -> extractFromResult(kind, result, textOrEmpty(params, "name"));
+            default -> List.of();
+        };
+    }
+
+    /**
+     * Walks an already-parsed JSON-RPC {@code result} envelope into the spec-defined textual
+     * {@link InspectedField}s, given the originating object's name/uri. Lets callers that hold a
+     * decoded response (e.g. the live proxy passive runner) reuse the same field-walk as the
+     * {@link HttpRequestResponse}-based {@link #extract} path without re-deriving a request body.
+     */
+    public static List<InspectedField> extractFromResult(ResponseContentKind kind,
+                                                         JsonNode result,
+                                                         String objectName) {
+        if (kind == null || result == null || !result.isObject()) {
+            return List.of();
+        }
+        String name = objectName == null ? "" : objectName;
+        return switch (kind) {
+            case TOOL_CALL -> toolCallFields(result, name);
+            case RESOURCE_READ -> resourceReadFields(result, name);
+            case PROMPT_GET -> promptGetFields(result, name);
             default -> List.of();
         };
     }

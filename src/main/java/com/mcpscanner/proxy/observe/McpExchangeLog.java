@@ -54,25 +54,33 @@ public final class McpExchangeLog implements McpObservationSink {
     }
 
     private void recordResponse(ObservedMessage message) {
+        LinkKey link = new LinkKey(message.sessionId(), message.jsonrpcId(), FIRST_GENERATION);
+        // Correlation is by the shared LinkKey: removing the answered pending request both records the
+        // correlation as resolved and bounds the map's growth. A response with no pending match is a
+        // standalone server-initiated row — the remove is a no-op and the row stays uncorrelated.
+        McpExchange correlatedRequest = pendingRequests.remove(link);
+        // A JSON-RPC response envelope ({jsonrpc,id,result}) has no method, and the response
+        // ObservedMessage deliberately carries no request — so borrow both from the correlated request:
+        // a response's content-kind IS its originating request's method (a tools/call response must be
+        // scanned as tools/call output) and the host is that request's httpService(). Uncorrelated /
+        // server-initiated rows keep the observed (null) values so the passive runner correctly skips
+        // them — no originating request, no host to invent.
+        boolean correlated = correlatedRequest != null;
         McpExchange exchange = new McpExchange(
                 message.sessionId(),
                 message.transport(),
                 Direction.SERVER_TO_CLIENT,
                 message.jsonrpcId(),
                 FIRST_GENERATION,
-                message.method(),
-                // response rows carry no originating request — they correlate to their request row via the shared LinkKey, which holds the HttpRequest.
-                null,
+                correlated ? correlatedRequest.method() : message.method(),
+                correlated ? correlatedRequest.request() : message.request(),
                 message.parsed(),
                 message.status(),
                 Instant.now(),
                 ExposureSurface.LIVE_RUNTIME_OUTPUT);
+        // Linked, not merged: this is a SEPARATE row sharing the correlated request's LinkKey; the
+        // request row is untouched. The response row only borrows the request's method/request for scanning.
         exchanges.add(exchange);
-        // Correlation is by the shared LinkKey: the appended row already links to its request row
-        // (both share an equal LinkKey). Evicting the answered pending request both records the
-        // correlation as resolved and bounds the map's growth. A response with no pending match is a
-        // standalone server-initiated row — leave pendingRequests untouched.
-        pendingRequests.remove(exchange.link());
         // Passive scanning targets live runtime output, so it fires only on response rows (here),
         // never on the request path.
         passiveRunner.scan(exchange);

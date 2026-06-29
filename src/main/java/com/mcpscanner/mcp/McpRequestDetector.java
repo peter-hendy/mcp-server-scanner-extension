@@ -312,6 +312,24 @@ public final class McpRequestDetector {
         };
     }
 
+    /**
+     * Maps a JSON-RPC request method to its runtime-output {@link ResponseContentKind}, or
+     * {@link ResponseContentKind#OTHER} for any non-runtime-output method (e.g. {@code tools/list}
+     * or {@code initialize}). Used by the live passive runner, which has the method name from a
+     * correlated exchange rather than a full {@link HttpRequestResponse} to classify.
+     */
+    public static ResponseContentKind responseContentKindForMethod(String method) {
+        if (method == null) {
+            return ResponseContentKind.OTHER;
+        }
+        return switch (method) {
+            case TOOLS_CALL_METHOD -> ResponseContentKind.TOOL_CALL;
+            case RESOURCES_READ_METHOD -> ResponseContentKind.RESOURCE_READ;
+            case PROMPTS_GET_METHOD -> ResponseContentKind.PROMPT_GET;
+            default -> ResponseContentKind.OTHER;
+        };
+    }
+
     public static ResponseContentKind classifyResponseContent(HttpRequestResponse requestResponse) {
         if (requestResponse == null) {
             return ResponseContentKind.OTHER;

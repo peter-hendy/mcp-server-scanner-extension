@@ -36,21 +36,23 @@ class McpExchangeLogTest {
     }
 
     @Test
-    void correlatedResponseAppendsLinkedRowAndEvictsPendingRequest() {
+    void correlatedResponseRowBorrowsItsRequestMethodAndRequestAndEvictsPendingRequest() {
         JsonNode responseNode = mock(JsonNode.class);
+        ObservedMessage request = clientToServer("s", "42", "tools/call");
 
-        log.observe(clientToServer("s", "42", "tools/call"));
-        log.observe(serverToClient("s", "42", "tools/call", 200, responseNode));
+        log.observe(request);
+        // production shape: a JSON-RPC response envelope carries no method and the row carries no request.
+        log.observe(productionResponse("s", "42", 200, responseNode));
 
         List<McpExchange> exchanges = log.exchanges();
         assertThat(exchanges).hasSize(2);
 
-        McpExchange request = exchanges.get(0);
+        McpExchange requestRow = exchanges.get(0);
         McpExchange response = exchanges.get(1);
 
-        assertThat(request.direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
-        assertThat(request.status()).isNull();
-        assertThat(request.decodedResponse()).isNull();
+        assertThat(requestRow.direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
+        assertThat(requestRow.status()).isNull();
+        assertThat(requestRow.decodedResponse()).isNull();
 
         assertThat(response.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
         assertThat(response.status()).isEqualTo(200);
@@ -59,19 +61,27 @@ class McpExchangeLogTest {
         assertThat(response.generation()).isZero();
         assertThat(response.timing()).isNotNull();
 
-        assertThat(response.link()).isEqualTo(request.link());
+        // The response row borrows the originating request's method + request so the passive runner can
+        // resolve the content-kind and the host from the response row alone.
+        assertThat(response.method()).isEqualTo("tools/call");
+        assertThat(response.request()).isSameAs(request.request());
+
+        assertThat(response.link()).isEqualTo(requestRow.link());
 
         // The pending entry was evicted: a second response with the same id finds no pending match
-        // and so is appended as a standalone server-initiated row (no eviction side effects to assert).
-        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
-        assertThat(log.exchanges()).hasSize(3);
+        // and so is appended as a standalone server-initiated row with no borrowed method/request.
+        log.observe(productionResponse("s", "42", 200, mock(JsonNode.class)));
+        List<McpExchange> after = log.exchanges();
+        assertThat(after).hasSize(3);
+        assertThat(after.get(2).method()).isNull();
+        assertThat(after.get(2).request()).isNull();
     }
 
     @Test
     void serverInitiatedResponseWithNoPendingRequestIsAppendedStandalone() {
         log.observe(clientToServer("s", "1", "tools/call"));
 
-        log.observe(serverToClient("s", "99", "tools/call", 200, mock(JsonNode.class)));
+        log.observe(productionResponse("s", "99", 200, mock(JsonNode.class)));
 
         List<McpExchange> exchanges = log.exchanges();
         assertThat(exchanges).hasSize(2);
@@ -80,10 +90,14 @@ class McpExchangeLogTest {
         assertThat(standalone.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
         assertThat(standalone.jsonrpcId()).isEqualTo("99");
         assertThat(standalone.status()).isEqualTo(200);
+        // Uncorrelated / server-initiated: no originating request, so method + request stay null and
+        // the passive runner correctly skips it (no host to invent, no content-kind to resolve).
+        assertThat(standalone.method()).isNull();
+        assertThat(standalone.request()).isNull();
 
         // The unrelated pending request for id "1" is untouched: its response still correlates and links.
         McpExchange request = exchanges.get(0);
-        log.observe(serverToClient("s", "1", "tools/call", 200, mock(JsonNode.class)));
+        log.observe(productionResponse("s", "1", 200, mock(JsonNode.class)));
         List<McpExchange> after = log.exchanges();
         assertThat(after).hasSize(3);
         assertThat(after.get(2).link()).isEqualTo(request.link());
@@ -94,18 +108,21 @@ class McpExchangeLogTest {
         log.observe(clientToServer("s", "42", "tools/call"));
         McpExchange originalRequest = log.exchanges().get(0);
 
-        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
+        log.observe(productionResponse("s", "42", 200, mock(JsonNode.class)));
 
         List<McpExchange> exchanges = log.exchanges();
         assertThat(exchanges).hasSize(2);
         // The original request row object is still present, unchanged: two distinct rows, opposite
-        // directions, same link — linked, not merged.
+        // directions, same link — linked, not merged. The response row borrows the request's method +
+        // request for scanning, but the request ROW itself is the same untouched object.
         assertThat(exchanges.get(0)).isSameAs(originalRequest);
         assertThat(exchanges.get(0).direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
         assertThat(exchanges.get(0).status()).isNull();
         assertThat(exchanges.get(0).decodedResponse()).isNull();
         assertThat(exchanges.get(1).direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
         assertThat(exchanges.get(1).link()).isEqualTo(exchanges.get(0).link());
+        assertThat(exchanges.get(1).method()).isEqualTo(originalRequest.method());
+        assertThat(exchanges.get(1).request()).isSameAs(originalRequest.request());
     }
 
     @Test
@@ -130,15 +147,21 @@ class McpExchangeLogTest {
     }
 
     @Test
-    void serverToClientObservationTriggersPassiveRunnerOnceWithTheResponseRow() {
-        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
+    void serverToClientObservationTriggersPassiveRunnerOnceWithTheCorrelatedResponseRow() {
+        ObservedMessage request = clientToServer("s", "42", "tools/call");
+        log.observe(request);
+
+        log.observe(productionResponse("s", "42", 200, mock(JsonNode.class)));
 
         assertThat(passiveRunner.scanned).hasSize(1);
         McpExchange scanned = passiveRunner.scanned.get(0);
         assertThat(scanned.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
         assertThat(scanned.jsonrpcId()).isEqualTo("42");
         assertThat(scanned.status()).isEqualTo(200);
-        assertThat(scanned).isSameAs(log.exchanges().get(0));
+        // The runner sees the enriched response row carrying the originating request's method + request.
+        assertThat(scanned.method()).isEqualTo("tools/call");
+        assertThat(scanned.request()).isSameAs(request.request());
+        assertThat(scanned).isSameAs(log.exchanges().get(1));
     }
 
     @Test
@@ -153,10 +176,13 @@ class McpExchangeLogTest {
                 method, mock(HttpRequest.class), mock(JsonNode.class), null);
     }
 
-    private static ObservedMessage serverToClient(String sessionId, String jsonrpcId, String method,
-                                                  Integer status, JsonNode parsed) {
+    private static ObservedMessage productionResponse(String sessionId, String jsonrpcId,
+                                                       Integer status, JsonNode parsed) {
+        // Production shape (see BurpObserverAdapter.observeResponse): a JSON-RPC response envelope has
+        // no method and the response row carries no request — both are null. recordResponse must enrich
+        // the row from the correlated request.
         return new ObservedMessage(Direction.SERVER_TO_CLIENT, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
-                method, mock(HttpRequest.class), parsed, status);
+                null, null, parsed, status);
     }
 
     private static final class CapturingPassiveRunner implements PassiveLiveRunner {
