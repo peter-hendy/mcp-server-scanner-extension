@@ -78,6 +78,7 @@ public class McpScannerTab extends JPanel {
     private final ResourceTemplateTablePanel resourceTemplateTablePanel;
     private final PromptTablePanel promptTablePanel;
     private final ServerInfoPanel serverInfoPanel;
+    private final TrafficTablePanel trafficTablePanel;
 
     private final JTextField endpointField;
     private final JComboBox<TransportType> transportCombo;
@@ -141,6 +142,7 @@ public class McpScannerTab extends JPanel {
         this.resourceTemplateTablePanel = new ResourceTemplateTablePanel();
         this.promptTablePanel = new PromptTablePanel();
         this.serverInfoPanel = new ServerInfoPanel();
+        this.trafficTablePanel = new TrafficTablePanel();
 
         this.endpointField = new JTextField(ENDPOINT_FIELD_COLUMNS);
         this.transportCombo = new JComboBox<>(TransportType.values());
@@ -169,6 +171,7 @@ public class McpScannerTab extends JPanel {
         inventoryTabs.addTab("Resources", resourceTablePanel);
         inventoryTabs.addTab("Templates", resourceTemplateTablePanel);
         inventoryTabs.addTab("Prompts", promptTablePanel);
+        inventoryTabs.addTab("Traffic", trafficTablePanel);
         inventoryTabs.addTab("Server Info", serverInfoPanel);
         inventoryTabs.setSelectedIndex(0);
         JSplitPane splitPane = new JSplitPane(
@@ -775,6 +778,10 @@ public class McpScannerTab extends JPanel {
 
     ServerInfoPanel serverInfoPanelForTest() {
         return serverInfoPanel;
+    }
+
+    TrafficTablePanel trafficTablePanelForTest() {
+        return trafficTablePanel;
     }
 
     void setStateForTest(UiConnectionState newState) {
