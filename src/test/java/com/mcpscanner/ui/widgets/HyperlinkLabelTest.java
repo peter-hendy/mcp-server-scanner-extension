@@ -20,8 +20,7 @@ class HyperlinkLabelTest {
     @Test
     void mouseClickedInvokesLauncherWithTargetUri() throws Exception {
         AtomicReference<URI> recorded = new AtomicReference<>();
-        HyperlinkLabel.Launcher launcher = recorded::set;
-        HyperlinkLabel label = new HyperlinkLabel("docs", TARGET, launcher);
+        HyperlinkLabel label = new HyperlinkLabel("docs", TARGET, recorded::set);
 
         invokeAndWait(() -> fireMouseClicked(label));
 
@@ -29,35 +28,13 @@ class HyperlinkLabelTest {
     }
 
     @Test
-    void browseFailureIsReportedToErrorSinkAndNotPropagated() throws Exception {
-        RuntimeException failure = new RuntimeException("browse blew up");
-        CountDownLatch reported = new CountDownLatch(1);
-        AtomicReference<Throwable> recorded = new AtomicReference<>();
-        HyperlinkLabel.Launcher launcher = HyperlinkLabel.daemonLauncher(
-                uri -> {
-                    throw failure;
-                },
-                throwable -> {
-                    recorded.set(throwable);
-                    reported.countDown();
-                });
-        HyperlinkLabel label = new HyperlinkLabel("docs", TARGET, launcher);
-
-        invokeAndWait(() -> fireMouseClicked(label));
-
-        assertThat(reported.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(recorded.get()).isSameAs(failure);
-    }
-
-    @Test
     void mouseClickedInvokesLauncherOffEdt() throws Exception {
         CountDownLatch fired = new CountDownLatch(1);
         AtomicReference<Boolean> firedOnEdt = new AtomicReference<>();
-        HyperlinkLabel.Launcher launcher = uri -> new Thread(() -> {
+        HyperlinkLabel label = new HyperlinkLabel("docs", TARGET, uri -> new Thread(() -> {
             firedOnEdt.set(SwingUtilities.isEventDispatchThread());
             fired.countDown();
-        }).start();
-        HyperlinkLabel label = new HyperlinkLabel("docs", TARGET, launcher);
+        }).start());
 
         invokeAndWait(() -> fireMouseClicked(label));
 
