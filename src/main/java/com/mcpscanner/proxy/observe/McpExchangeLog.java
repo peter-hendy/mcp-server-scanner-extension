@@ -27,7 +27,7 @@ public final class McpExchangeLog implements McpObservationSink {
             recordRequest(message);
             return;
         }
-        // TODO(Task 7): response correlation — match SERVER_TO_CLIENT against pendingRequests by LinkKey.
+        recordResponse(message);
     }
 
     private void recordRequest(ObservedMessage message) {
@@ -46,6 +46,28 @@ public final class McpExchangeLog implements McpObservationSink {
         exchanges.add(exchange);
         // TODO(Task 7): same LinkKey (sessionId,jsonrpcId,generation) → last writer wins; revisit with real generation tracking.
         pendingRequests.put(exchange.link(), exchange);
+    }
+
+    private void recordResponse(ObservedMessage message) {
+        McpExchange exchange = new McpExchange(
+                message.sessionId(),
+                message.transport(),
+                Direction.SERVER_TO_CLIENT,
+                message.jsonrpcId(),
+                FIRST_GENERATION,
+                message.method(),
+                // response rows carry no originating request — they correlate to their request row via the shared LinkKey, which holds the HttpRequest.
+                null,
+                message.parsed(),
+                message.status(),
+                Instant.now(),
+                ExposureSurface.LIVE_RUNTIME_OUTPUT);
+        exchanges.add(exchange);
+        // Correlation is by the shared LinkKey: the appended row already links to its request row
+        // (both share an equal LinkKey). Evicting the answered pending request both records the
+        // correlation as resolved and bounds the map's growth. A response with no pending match is a
+        // standalone server-initiated row — leave pendingRequests untouched.
+        pendingRequests.remove(exchange.link());
     }
 
     public List<McpExchange> exchanges() {

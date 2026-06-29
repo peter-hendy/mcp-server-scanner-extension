@@ -34,10 +34,76 @@ class McpExchangeLogTest {
     }
 
     @Test
-    void serverToClientObservationIsIgnoredForNow() {
-        log.observe(serverToClient("session-1", "7", "tools/call"));
+    void correlatedResponseAppendsLinkedRowAndEvictsPendingRequest() {
+        JsonNode responseNode = mock(JsonNode.class);
 
-        assertThat(log.exchanges()).isEmpty();
+        log.observe(clientToServer("s", "42", "tools/call"));
+        log.observe(serverToClient("s", "42", "tools/call", 200, responseNode));
+
+        List<McpExchange> exchanges = log.exchanges();
+        assertThat(exchanges).hasSize(2);
+
+        McpExchange request = exchanges.get(0);
+        McpExchange response = exchanges.get(1);
+
+        assertThat(request.direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
+        assertThat(request.status()).isNull();
+        assertThat(request.decodedResponse()).isNull();
+
+        assertThat(response.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.decodedResponse()).isSameAs(responseNode);
+        assertThat(response.exposureSurface()).isEqualTo(ExposureSurface.LIVE_RUNTIME_OUTPUT);
+        assertThat(response.generation()).isZero();
+        assertThat(response.timing()).isNotNull();
+
+        assertThat(response.link()).isEqualTo(request.link());
+
+        // The pending entry was evicted: a second response with the same id finds no pending match
+        // and so is appended as a standalone server-initiated row (no eviction side effects to assert).
+        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
+        assertThat(log.exchanges()).hasSize(3);
+    }
+
+    @Test
+    void serverInitiatedResponseWithNoPendingRequestIsAppendedStandalone() {
+        log.observe(clientToServer("s", "1", "tools/call"));
+
+        log.observe(serverToClient("s", "99", "tools/call", 200, mock(JsonNode.class)));
+
+        List<McpExchange> exchanges = log.exchanges();
+        assertThat(exchanges).hasSize(2);
+
+        McpExchange standalone = exchanges.get(1);
+        assertThat(standalone.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(standalone.jsonrpcId()).isEqualTo("99");
+        assertThat(standalone.status()).isEqualTo(200);
+
+        // The unrelated pending request for id "1" is untouched: its response still correlates and links.
+        McpExchange request = exchanges.get(0);
+        log.observe(serverToClient("s", "1", "tools/call", 200, mock(JsonNode.class)));
+        List<McpExchange> after = log.exchanges();
+        assertThat(after).hasSize(3);
+        assertThat(after.get(2).link()).isEqualTo(request.link());
+    }
+
+    @Test
+    void responseIsLinkedNotMergedLeavingTheRequestRowUntouched() {
+        log.observe(clientToServer("s", "42", "tools/call"));
+        McpExchange originalRequest = log.exchanges().get(0);
+
+        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
+
+        List<McpExchange> exchanges = log.exchanges();
+        assertThat(exchanges).hasSize(2);
+        // The original request row object is still present, unchanged: two distinct rows, opposite
+        // directions, same link — linked, not merged.
+        assertThat(exchanges.get(0)).isSameAs(originalRequest);
+        assertThat(exchanges.get(0).direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
+        assertThat(exchanges.get(0).status()).isNull();
+        assertThat(exchanges.get(0).decodedResponse()).isNull();
+        assertThat(exchanges.get(1).direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(exchanges.get(1).link()).isEqualTo(exchanges.get(0).link());
     }
 
     @Test
@@ -62,15 +128,13 @@ class McpExchangeLogTest {
     }
 
     private static ObservedMessage clientToServer(String sessionId, String jsonrpcId, String method) {
-        return observed(Direction.CLIENT_TO_SERVER, sessionId, jsonrpcId, method);
+        return new ObservedMessage(Direction.CLIENT_TO_SERVER, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
+                method, mock(HttpRequest.class), mock(JsonNode.class), null);
     }
 
-    private static ObservedMessage serverToClient(String sessionId, String jsonrpcId, String method) {
-        return observed(Direction.SERVER_TO_CLIENT, sessionId, jsonrpcId, method);
-    }
-
-    private static ObservedMessage observed(Direction direction, String sessionId, String jsonrpcId, String method) {
-        return new ObservedMessage(direction, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId, method,
-                mock(HttpRequest.class), mock(JsonNode.class), null);
+    private static ObservedMessage serverToClient(String sessionId, String jsonrpcId, String method,
+                                                  Integer status, JsonNode parsed) {
+        return new ObservedMessage(Direction.SERVER_TO_CLIENT, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
+                method, mock(HttpRequest.class), parsed, status);
     }
 }
