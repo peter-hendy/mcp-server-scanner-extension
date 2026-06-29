@@ -15,6 +15,8 @@ import com.mcpscanner.mcp.ServerMetadata;
 import com.mcpscanner.client.TransportType;
 import com.mcpscanner.config.ExtensionConfigStore;
 import com.mcpscanner.logging.McpEventLog;
+import com.mcpscanner.proxy.observe.McpExchange;
+import com.mcpscanner.proxy.observe.preflight.PreflightReport;
 import com.mcpscanner.scan.CurrentSelectionHolder;
 import com.mcpscanner.scan.McpScanLauncher;
 import com.mcpscanner.scan.ScanInventory;
@@ -45,7 +47,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class McpScannerTab extends JPanel {
 
@@ -142,7 +146,8 @@ public class McpScannerTab extends JPanel {
         this.resourceTemplateTablePanel = new ResourceTemplateTablePanel();
         this.promptTablePanel = new PromptTablePanel();
         this.serverInfoPanel = new ServerInfoPanel();
-        this.trafficTablePanel = new TrafficTablePanel();
+        this.trafficTablePanel = new TrafficTablePanel(
+                configStore.mcpProxyEnabled(), configStore::setMcpProxyEnabled);
 
         this.endpointField = new JTextField(ENDPOINT_FIELD_COLUMNS);
         this.transportCombo = new JComboBox<>(TransportType.values());
@@ -192,6 +197,21 @@ public class McpScannerTab extends JPanel {
     public void shutdown() {
         scanLauncher.cancelActiveScans();
         serverConfigPanel.shutdown();
+    }
+
+    /**
+     * The Traffic-tab feed for the MCP-proxy live observation log. The returned consumer is invoked on
+     * the observing (proxy / scanner) thread; it marshals each appended {@link McpExchange} onto the
+     * Swing EDT before touching {@code TrafficTablePanel}, honouring that panel's documented EDT
+     * contract.
+     */
+    public Consumer<McpExchange> trafficFeed() {
+        return exchange -> SwingUtilities.invokeLater(() -> trafficTablePanel.addExchange(exchange));
+    }
+
+    /** Wires the proxy preflight report into the Traffic tab so the operator can run it on demand. */
+    public void attachProxyPreflight(Supplier<PreflightReport> preflightSource) {
+        trafficTablePanel.attachPreflightSource(preflightSource);
     }
 
     private void seedFromConfig() {
@@ -519,6 +539,7 @@ public class McpScannerTab extends JPanel {
         resourceTemplateTablePanel.populate(List.of());
         promptTablePanel.populate(List.of());
         serverInfoPanel.populate(ServerMetadata.empty());
+        trafficTablePanel.setExchanges(List.of());
     }
 
     private void renderState() {

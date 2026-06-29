@@ -171,6 +171,37 @@ class McpExchangeLogTest {
         assertThat(passiveRunner.scanned).isEmpty();
     }
 
+    @Test
+    void appendListenerIsNotifiedForEveryAppendedRowInOrder() {
+        List<McpExchange> appended = new ArrayList<>();
+        log.setAppendListener(appended::add);
+
+        log.observe(clientToServer("s", "42", "tools/call"));
+        log.observe(productionResponse("s", "42", 200, mock(JsonNode.class)));
+
+        assertThat(appended).hasSize(2);
+        assertThat(appended.get(0).direction()).isEqualTo(Direction.CLIENT_TO_SERVER);
+        assertThat(appended.get(1).direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        // The listener receives the same row objects the log holds, in append order.
+        assertThat(appended).containsExactlyElementsOf(log.exchanges());
+    }
+
+    @Test
+    void appendListenerDefaultsToNoOpSoExistingCallersAreUnaffected() {
+        log.observe(clientToServer("s", "1", "tools/call"));
+
+        assertThat(log.exchanges()).hasSize(1);
+    }
+
+    @Test
+    void nullAppendListenerResetsToNoOpAndDoesNotThrow() {
+        log.setAppendListener(null);
+
+        log.observe(clientToServer("s", "1", "tools/call"));
+
+        assertThat(log.exchanges()).hasSize(1);
+    }
+
     private static ObservedMessage clientToServer(String sessionId, String jsonrpcId, String method) {
         return new ObservedMessage(Direction.CLIENT_TO_SERVER, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
                 method, mock(HttpRequest.class), mock(JsonNode.class), null);

@@ -21,11 +21,11 @@ import com.mcpscanner.checks.registry.ScanCheckRegistry;
 import com.mcpscanner.checks.registry.ScanCheckSettings;
 import burp.api.montoya.scanner.AuditConfiguration;
 import burp.api.montoya.scanner.BuiltInAuditConfiguration;
+import com.mcpscanner.checks.content.LiveContentPassiveRunner;
 import com.mcpscanner.client.McpClientManager;
 import com.mcpscanner.proxy.McpHttpHandler;
 import com.mcpscanner.proxy.SseProxyServer;
-import com.mcpscanner.proxy.observe.NoopBurpTrafficObserver;
-import com.mcpscanner.proxy.observe.SwapAllMatchingTools;
+import com.mcpscanner.proxy.observe.McpProxyModule;
 import com.mcpscanner.scan.CurrentSelectionHolder;
 import com.mcpscanner.scan.JsonRpcRequestBuilder;
 import com.mcpscanner.scan.McpInsertionPointProvider;
@@ -116,6 +116,22 @@ public class McpScannerExtension implements BurpExtension {
         McpScannerTab mcpScannerTab = registerSuiteTabOnEdt(api, clientManager, scanLauncher, configStore, checkRegistry,
                 checkSettings, eventLog, authHolder, selectionHolder, authorizationFlow, discoverer);
 
+        // === MCP Proxy feature (shielded; see McpProxyModule removal procedure) ===
+        // Single integration point. The toggle-aware policy/observer mean OFF == pre-feature behaviour
+        // (swap every matching tool, no live tap); ON narrows the swap to the scanner family and taps
+        // un-swapped live MCP traffic into the shared exchange log, which passively scans live responses
+        // and feeds each row to the Traffic tab (marshalled onto the EDT by McpScannerTab).
+        LiveContentPassiveRunner liveContentRunner = new LiveContentPassiveRunner(
+                ContentRules.all(), checkSettings, api, contentDedup);
+        McpProxyModule proxyModule = new McpProxyModule(
+                api, configStore::mcpProxyEnabled, clientManager.scannerSession(),
+                liveContentRunner, mcpScannerTab.trafficFeed());
+        clientManager.addDisconnectListener(proxyModule.exchangeLog()::clear);
+        // initialize() runs off the EDT; attachProxyPreflight mutates Swing state (button enabled),
+        // so marshal it onto the EDT to honour the panel's EDT-only contract.
+        SwingUtilities.invokeLater(() -> mcpScannerTab.attachProxyPreflight(proxyModule.preflight()::run));
+        // === end MCP Proxy feature ===
+
         SseProxyServer sseProxy = new SseProxyServer(clientManager.scannerSession(), api.logging());
         try {
             sseProxy.start();
@@ -123,7 +139,7 @@ public class McpScannerExtension implements BurpExtension {
             clientManager.addDisconnectListener(sseProxy::resetScanSession);
             api.http().registerHttpHandler(new McpHttpHandler(
                     clientManager.scannerSession(), sseProxy,
-                    new SwapAllMatchingTools(), new NoopBurpTrafficObserver()));
+                    proxyModule.swapPolicy(), proxyModule.trafficObserver()));
             api.extension().registerUnloadingHandler(() -> {
                 mcpScannerTab.shutdown();
                 clientManager.shutdown();
