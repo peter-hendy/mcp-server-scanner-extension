@@ -20,6 +20,11 @@ public final class McpExchangeLog implements McpObservationSink {
     private final List<McpExchange> exchanges = new CopyOnWriteArrayList<>();
     // TODO(Task 7+): pendingRequests is never evicted — uncorrelated/notification/never-answered entries leak; add a bound or TTL.
     private final Map<LinkKey, McpExchange> pendingRequests = new ConcurrentHashMap<>();
+    private final PassiveLiveRunner passiveRunner;
+
+    public McpExchangeLog(PassiveLiveRunner passiveRunner) {
+        this.passiveRunner = passiveRunner;
+    }
 
     @Override
     public void observe(ObservedMessage message) {
@@ -68,6 +73,9 @@ public final class McpExchangeLog implements McpObservationSink {
         // correlation as resolved and bounds the map's growth. A response with no pending match is a
         // standalone server-initiated row — leave pendingRequests untouched.
         pendingRequests.remove(exchange.link());
+        // Passive scanning targets live runtime output, so it fires only on response rows (here),
+        // never on the request path.
+        passiveRunner.scan(exchange);
     }
 
     public List<McpExchange> exchanges() {

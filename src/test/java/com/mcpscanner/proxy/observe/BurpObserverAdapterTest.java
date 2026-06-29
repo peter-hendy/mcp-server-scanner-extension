@@ -1,6 +1,8 @@
 package com.mcpscanner.proxy.observe;
 
 import burp.api.montoya.http.handler.HttpRequestToBeSent;
+import burp.api.montoya.http.handler.HttpResponseReceived;
+import burp.api.montoya.http.message.requests.HttpRequest;
 import com.mcpscanner.client.McpScannerSession;
 import com.mcpscanner.client.TransportType;
 import com.mcpscanner.testutil.MontoyaTestFactory;
@@ -73,6 +75,100 @@ class BurpObserverAdapterTest {
         adapter.observeRequest(plainRequest("{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\""));
 
         assertThat(sink.messages).isEmpty();
+    }
+
+    private static final String RESULT_BODY =
+            "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}";
+
+    @Test
+    void jsonRpcResponseIsObservedOnceAsServerToClientWithStatusIdAndSession() {
+        adapter.observeResponse(jsonRpcResponse(RESULT_BODY, 200, "session-xyz"));
+
+        assertThat(sink.messages).hasSize(1);
+        ObservedMessage observed = sink.messages.get(0);
+        assertThat(observed.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(observed.jsonrpcId()).isEqualTo("42");
+        assertThat(observed.status()).isEqualTo(200);
+        assertThat(observed.sessionId()).isEqualTo("session-xyz");
+        assertThat(observed.transport()).isEqualTo(TransportType.STREAMABLE_HTTP);
+        assertThat(observed.request()).isNull();
+        assertThat(observed.method()).isNull();
+        assertThat(observed.parsed()).isNotNull();
+        assertThat(observed.parsed().path("id").asText()).isEqualTo("42");
+    }
+
+    @Test
+    void serverInitiatedResponseWithMethodCarriesThatMethod() {
+        String serverRequestBody =
+                "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"sampling/createMessage\",\"params\":{}}";
+
+        adapter.observeResponse(jsonRpcResponse(serverRequestBody, 200, null));
+
+        assertThat(sink.messages).hasSize(1);
+        ObservedMessage observed = sink.messages.get(0);
+        assertThat(observed.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(observed.method()).isEqualTo("sampling/createMessage");
+        assertThat(observed.jsonrpcId()).isEqualTo("7");
+    }
+
+    @Test
+    void sessionIdIsReadFromInitiatingRequestAndNullWhenAbsent() {
+        adapter.observeResponse(jsonRpcResponse(RESULT_BODY, 200, null));
+
+        assertThat(sink.messages).hasSize(1);
+        assertThat(sink.messages.get(0).sessionId()).isNull();
+    }
+
+    @Test
+    void sseFramedResponseIsLiftedAndObserved() {
+        String sseBody = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"7\",\"result\":{\"content\":[]}}\n\n";
+
+        adapter.observeResponse(jsonRpcResponse(sseBody, 200, "session-sse"));
+
+        assertThat(sink.messages).hasSize(1);
+        ObservedMessage observed = sink.messages.get(0);
+        assertThat(observed.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(observed.jsonrpcId()).isEqualTo("7");
+        assertThat(observed.status()).isEqualTo(200);
+        assertThat(observed.sessionId()).isEqualTo("session-sse");
+    }
+
+    @Test
+    void nonJsonRpcJsonBodyIsNotObserved() {
+        adapter.observeResponse(jsonRpcResponse("{\"ok\":true}", 200, null));
+
+        assertThat(sink.messages).isEmpty();
+    }
+
+    @Test
+    void malformedJsonResponseBodyDoesNotThrowAndIsNotObserved() {
+        adapter.observeResponse(jsonRpcResponse("{\"jsonrpc\":\"2.0\",\"id\":1", 200, null));
+
+        assertThat(sink.messages).isEmpty();
+    }
+
+    @Test
+    void emptyResponseBodyDoesNotThrowAndIsNotObserved() {
+        adapter.observeResponse(jsonRpcResponse("", 204, null));
+
+        assertThat(sink.messages).isEmpty();
+    }
+
+    @Test
+    void nonJsonResponseBodyDoesNotThrowAndIsNotObserved() {
+        adapter.observeResponse(jsonRpcResponse("Internal Server Error", 500, null));
+
+        assertThat(sink.messages).isEmpty();
+    }
+
+    private HttpResponseReceived jsonRpcResponse(String body, int statusCode, String sessionId) {
+        HttpResponseReceived response = mock(HttpResponseReceived.class);
+        lenient().when(response.bodyToString()).thenReturn(body);
+        lenient().when(response.statusCode()).thenReturn((short) statusCode);
+        HttpRequest initiatingRequest = mock(HttpRequest.class);
+        lenient().when(initiatingRequest.headerValue("Mcp-Session-Id")).thenReturn(sessionId);
+        lenient().when(response.initiatingRequest()).thenReturn(initiatingRequest);
+        return response;
     }
 
     private HttpRequestToBeSent jsonRpcRequest(String body, String sessionId) {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.mcpscanner.client.TransportType;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -13,7 +14,8 @@ import static org.mockito.Mockito.mock;
 
 class McpExchangeLogTest {
 
-    private final McpExchangeLog log = new McpExchangeLog();
+    private final CapturingPassiveRunner passiveRunner = new CapturingPassiveRunner();
+    private final McpExchangeLog log = new McpExchangeLog(passiveRunner);
 
     @Test
     void clientToServerObservationAppendsOneExchangeRow() {
@@ -127,6 +129,25 @@ class McpExchangeLogTest {
         assertThat(log.exchanges()).hasSize(count);
     }
 
+    @Test
+    void serverToClientObservationTriggersPassiveRunnerOnceWithTheResponseRow() {
+        log.observe(serverToClient("s", "42", "tools/call", 200, mock(JsonNode.class)));
+
+        assertThat(passiveRunner.scanned).hasSize(1);
+        McpExchange scanned = passiveRunner.scanned.get(0);
+        assertThat(scanned.direction()).isEqualTo(Direction.SERVER_TO_CLIENT);
+        assertThat(scanned.jsonrpcId()).isEqualTo("42");
+        assertThat(scanned.status()).isEqualTo(200);
+        assertThat(scanned).isSameAs(log.exchanges().get(0));
+    }
+
+    @Test
+    void clientToServerObservationDoesNotTriggerPassiveRunner() {
+        log.observe(clientToServer("s", "42", "tools/call"));
+
+        assertThat(passiveRunner.scanned).isEmpty();
+    }
+
     private static ObservedMessage clientToServer(String sessionId, String jsonrpcId, String method) {
         return new ObservedMessage(Direction.CLIENT_TO_SERVER, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
                 method, mock(HttpRequest.class), mock(JsonNode.class), null);
@@ -136,5 +157,14 @@ class McpExchangeLogTest {
                                                   Integer status, JsonNode parsed) {
         return new ObservedMessage(Direction.SERVER_TO_CLIENT, TransportType.STREAMABLE_HTTP, sessionId, jsonrpcId,
                 method, mock(HttpRequest.class), parsed, status);
+    }
+
+    private static final class CapturingPassiveRunner implements PassiveLiveRunner {
+        private final List<McpExchange> scanned = new ArrayList<>();
+
+        @Override
+        public void scan(McpExchange exchange) {
+            scanned.add(exchange);
+        }
     }
 }

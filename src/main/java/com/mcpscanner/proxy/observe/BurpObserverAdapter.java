@@ -9,6 +9,7 @@ import com.mcpscanner.client.TransportType;
 import com.mcpscanner.mcp.McpObjectMapper;
 import com.mcpscanner.mcp.McpRequestDetector;
 import com.mcpscanner.mcp.McpRequestKind;
+import com.mcpscanner.mcp.SseResponseParser;
 
 /**
  * Burp-edge adapter that turns un-swapped live MCP traffic into {@link ObservedMessage}s and feeds
@@ -56,12 +57,40 @@ public final class BurpObserverAdapter implements BurpTrafficObserver {
 
     @Override
     public void observeResponse(HttpResponseReceived response) {
-        // TODO(Task 7): build SERVER_TO_CLIENT ObservedMessage from the response and feed the sink.
+        // a Streamable-HTTP reply commonly arrives SSE-framed (event: message / data: {...}); fall back
+        // to the canonical lifter so the JSON-RPC reply is not silently dropped on text/event-stream.
+        JsonNode parsed = parseResponseBody(response.bodyToString());
+        if (parsed == null || !isJsonRpcEnvelope(parsed)) {
+            return;
+        }
+        // transport may be null if a disconnect races an in-flight observe; the row tolerates null.
+        TransportType transport = scannerSession.transportType();
+        // statusCode() returns short; the (int) cast autoboxes to Integer (not Short) for the row.
+        int status = (int) response.statusCode();
+        sink.observe(new ObservedMessage(
+                Direction.SERVER_TO_CLIENT,
+                transport,
+                // the response may not echo the session header — read it from the initiating request.
+                response.initiatingRequest().headerValue(SESSION_HEADER),
+                jsonrpcId(parsed),
+                method(parsed),
+                // a response row carries no originating request — it correlates via the shared LinkKey.
+                null,
+                parsed,
+                status));
     }
 
     private static boolean isMcpRequest(HttpRequestToBeSent request) {
         HttpRequestResponse requestResponse = HttpRequestResponse.httpRequestResponse(request, null);
         return McpRequestDetector.classify(requestResponse) != McpRequestKind.NOT_MCP;
+    }
+
+    private static JsonNode parseResponseBody(String body) {
+        JsonNode bare = parseJsonRpc(body);
+        if (bare != null) {
+            return bare;
+        }
+        return parseJsonRpc(SseResponseParser.extractJsonRpcResponse(body));
     }
 
     private static JsonNode parseJsonRpc(String body) {
@@ -73,6 +102,14 @@ public final class BurpObserverAdapter implements BurpTrafficObserver {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static boolean isJsonRpcEnvelope(JsonNode parsed) {
+        return parsed.has("jsonrpc")
+                || parsed.has("id")
+                || parsed.has("method")
+                || parsed.has("result")
+                || parsed.has("error");
     }
 
     private static String method(JsonNode parsed) {

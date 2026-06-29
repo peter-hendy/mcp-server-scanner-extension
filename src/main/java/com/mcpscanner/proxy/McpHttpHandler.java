@@ -6,6 +6,7 @@ import burp.api.montoya.http.handler.HttpRequestToBeSent;
 import burp.api.montoya.http.handler.HttpResponseReceived;
 import burp.api.montoya.http.handler.RequestToBeSentAction;
 import burp.api.montoya.http.handler.ResponseReceivedAction;
+import burp.api.montoya.http.message.requests.HttpRequest;
 import com.mcpscanner.client.McpScannerSession;
 import com.mcpscanner.client.TransportType;
 import com.mcpscanner.proxy.observe.BurpTrafficObserver;
@@ -65,10 +66,13 @@ public class McpHttpHandler implements HttpHandler {
 
     @Override
     public ResponseReceivedAction handleHttpResponseReceived(HttpResponseReceived response) {
+        if (proxyTarget(response.initiatingRequest()) != null) {
+            observer.observeResponse(response);
+        }
         return ResponseReceivedAction.continueWith(response);
     }
 
-    private URI proxyTarget(HttpRequestToBeSent request) {
+    private URI proxyTarget(HttpRequest request) {
         TransportType transport = scannerSession.transportType();
         if (transport != TransportType.STREAMABLE_HTTP && transport != TransportType.SSE) {
             return null;

@@ -12,6 +12,7 @@ import burp.api.montoya.http.message.requests.HttpRequest;
 import com.mcpscanner.client.McpScannerSession;
 import com.mcpscanner.client.TransportType;
 import com.mcpscanner.proxy.observe.BurpTrafficObserver;
+import com.mcpscanner.proxy.observe.NoopBurpTrafficObserver;
 import com.mcpscanner.proxy.observe.ScannerFamilySwapPolicy;
 import com.mcpscanner.proxy.observe.SwapAllMatchingTools;
 import com.mcpscanner.testutil.MontoyaTestFactory;
@@ -41,6 +42,7 @@ class McpHttpHandlerTest {
     @Mock private HttpService httpService;
     @Mock private HttpRequest rewrittenRequest;
     @Mock private HttpResponseReceived response;
+    @Mock private HttpRequest initiatingRequest;
     @Mock private Annotations annotations;
     @Mock private BurpTrafficObserver observer;
     @Mock private ToolSource toolSource;
@@ -322,6 +324,51 @@ class McpHttpHandlerTest {
         assertThat(result.response()).isSameAs(response);
     }
 
+    @Test
+    void observesResponseWhoseInitiatingRequestMatchesMcpEndpoint() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        stubInitiatingRequest("localhost", 3001, "/mcp");
+
+        ResponseReceivedAction result = handler.handleHttpResponseReceived(response);
+
+        assertThat(result.response()).isSameAs(response);
+        verify(observer).observeResponse(response);
+    }
+
+    @Test
+    void doesNotObserveResponseWhoseInitiatingRequestDoesNotMatch() {
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        stubInitiatingRequest("localhost", 3001, "/.well-known/oauth-protected-resource");
+
+        ResponseReceivedAction result = handler.handleHttpResponseReceived(response);
+
+        assertThat(result.response()).isSameAs(response);
+        verify(observer, never()).observeResponse(any());
+    }
+
+    /**
+     * Off-mode invariant: a matching response handed to the no-op observer must not throw and the
+     * response path must never consult {@code response.toolSource()}. {@code proxyTarget} reads
+     * transport/endpoint/host/path only — never tool source — so off-mode stays byte-identical to
+     * the pre-seam pass-through. (The initiating {@link HttpRequest} carries no {@code toolSource()}
+     * at all, so there is nothing to consult there.)
+     */
+    @Test
+    void responsePath_doesNotConsultToolSource() {
+        McpHttpHandler offModeHandler =
+                new McpHttpHandler(scannerSession, proxy, new SwapAllMatchingTools(),
+                        new NoopBurpTrafficObserver());
+        when(scannerSession.transportType()).thenReturn(TransportType.STREAMABLE_HTTP);
+        when(scannerSession.resolvedEndpoint()).thenReturn("http://localhost:3001/mcp");
+        stubInitiatingRequest("localhost", 3001, "/mcp");
+
+        offModeHandler.handleHttpResponseReceived(response);
+
+        verify(response, never()).toolSource();
+    }
+
     /**
      * Compatibility invariant: with {@link SwapAllMatchingTools} the handler must reach its swap
      * decision without ever consulting the request's {@code toolSource()}. All tool logic lives
@@ -432,5 +479,13 @@ class McpHttpHandlerTest {
         when(httpService.port()).thenReturn(port);
         when(request.pathWithoutQuery()).thenReturn(pathWithoutQuery);
         when(request.annotations()).thenReturn(annotations);
+    }
+
+    private void stubInitiatingRequest(String host, int port, String pathWithoutQuery) {
+        when(response.initiatingRequest()).thenReturn(initiatingRequest);
+        when(initiatingRequest.httpService()).thenReturn(httpService);
+        when(httpService.host()).thenReturn(host);
+        when(httpService.port()).thenReturn(port);
+        when(initiatingRequest.pathWithoutQuery()).thenReturn(pathWithoutQuery);
     }
 }
