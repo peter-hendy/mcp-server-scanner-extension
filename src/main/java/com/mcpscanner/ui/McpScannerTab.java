@@ -148,8 +148,7 @@ public class McpScannerTab extends JPanel {
         this.transportCombo = new JComboBox<>(TransportType.values());
         this.authTypeCombo = new JComboBox<>(ServerConfigPanel.AUTH_TYPES.toArray(new String[0]));
         this.primaryButton = createToolbarButton(state.status().primaryButtonLabel());
-        this.scanButton = createToolbarButton("Scan");
-        styleAsPrimaryAction(scanButton);
+        this.scanButton = createPrimaryActionButton("Scan");
         this.statusCluster = new StatusCluster();
 
         endpointField.setToolTipText("MCP server URL (e.g. https://mcp.example.com/mcp)");
@@ -283,55 +282,45 @@ public class McpScannerTab extends JPanel {
         return button;
     }
 
-    private static void styleAsPrimaryAction(JButton button) {
-        button.setForeground(Color.WHITE);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
+    private static JButton createPrimaryActionButton(String label) {
+        JButton button = new JButton(label) {
+            @Override
+            protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                try {
+                    g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                            java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(primaryActionBackground(this));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                } finally {
+                    g2.dispose();
+                }
+                super.paintComponent(g);
+            }
+        };
+        button.setOpaque(false);
         button.setContentAreaFilled(false);
-        button.setUI(new PrimaryActionButtonUI());
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        button.setForeground(Color.WHITE);
+        button.setMargin(BUTTON_MARGIN);
+        return button;
     }
 
-    private static final class PrimaryActionButtonUI extends javax.swing.plaf.basic.BasicButtonUI {
-        @Override
-        public void installUI(JComponent c) {
-            super.installUI(c);
-            // Must be opaque so the parent container does not paint its own background
-            // on top of our custom rounded-rect fill. Without this some LAFs (notably
-            // macOS Aqua) leave the button invisible because they composite the toolbar
-            // background over a non-opaque child after our paint() has already run.
-            c.setOpaque(true);
+    private static Color primaryActionBackground(AbstractButton button) {
+        if (!button.isEnabled()) {
+            Color panelBg = UIManager.getColor("Panel.background");
+            return ThemeColors.isDark(panelBg)
+                    ? PORTSWIGGER_ORANGE_DISABLED_DARK
+                    : PORTSWIGGER_ORANGE_DISABLED_LIGHT;
         }
-
-        @Override
-        public void paint(java.awt.Graphics g, JComponent c) {
-            AbstractButton button = (AbstractButton) c;
-            java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
-            try {
-                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
-                        java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(backgroundFor(button));
-                g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), 6, 6);
-            } finally {
-                g2.dispose();
-            }
-            super.paint(g, c);
+        if (button.getModel().isPressed()) {
+            return PORTSWIGGER_ORANGE_PRESSED;
         }
-
-        private static Color backgroundFor(AbstractButton button) {
-            if (!button.isEnabled()) {
-                Color panelBg = UIManager.getColor("Panel.background");
-                return ThemeColors.isDark(panelBg)
-                        ? PORTSWIGGER_ORANGE_DISABLED_DARK
-                        : PORTSWIGGER_ORANGE_DISABLED_LIGHT;
-            }
-            if (button.getModel().isPressed()) {
-                return PORTSWIGGER_ORANGE_PRESSED;
-            }
-            if (button.getModel().isRollover()) {
-                return PORTSWIGGER_ORANGE_HOVER;
-            }
-            return PORTSWIGGER_ORANGE;
+        if (button.getModel().isRollover()) {
+            return PORTSWIGGER_ORANGE_HOVER;
         }
+        return PORTSWIGGER_ORANGE;
     }
 
     private static JSeparator verticalSeparator() {
