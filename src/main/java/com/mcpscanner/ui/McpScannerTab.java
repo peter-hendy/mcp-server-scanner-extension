@@ -139,7 +139,7 @@ public class McpScannerTab extends JPanel {
 
         this.serverConfigPanel = Objects.requireNonNull(serverConfigPanel, "serverConfigPanel must not be null");
         this.connectCoordinator = new ConnectCoordinator(serverConfigPanel, clientManager, eventLog);
-        this.scanChecksPanel = new ScanChecksPanel(checkRegistry, checkSettings);
+        this.scanChecksPanel = new ScanChecksPanel(checkRegistry, checkSettings, logging::logToError);
         this.inspectorPanel = new InspectorPanel(serverConfigPanel, scanChecksPanel, eventLog);
         this.toolTablePanel = new ToolTablePanel();
         this.resourceTablePanel = new ResourceTablePanel();
@@ -246,13 +246,15 @@ public class McpScannerTab extends JPanel {
         return statusRow;
     }
 
-    private static JPanel buildSupportLinks() {
+    private JPanel buildSupportLinks() {
         JPanel rightLinks = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightLinks.add(new HyperlinkLabel("Report a bug",
-                URI.create("https://github.com/peter-hendy/mcp-server-scanner-extension/issues/new?labels=bug")));
+                URI.create("https://github.com/peter-hendy/mcp-server-scanner-extension/issues/new?labels=bug"),
+                logging::logToError));
         rightLinks.add(new JLabel(" · "));
         rightLinks.add(new HyperlinkLabel("Request a feature",
-                URI.create("https://github.com/peter-hendy/mcp-server-scanner-extension/issues/new?labels=enhancement")));
+                URI.create("https://github.com/peter-hendy/mcp-server-scanner-extension/issues/new?labels=enhancement"),
+                logging::logToError));
         rightLinks.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
         return rightLinks;
     }
