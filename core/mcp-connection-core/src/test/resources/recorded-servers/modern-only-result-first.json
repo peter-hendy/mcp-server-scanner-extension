@@ -1,0 +1,8 @@
+{
+  "endpoint": "https://modern-only-result-first.example/mcp",
+  "expected": {"version": "2026-07-28", "sessionId": false, "tools": 3},
+  "exchanges": [
+    {"method": "server/discover", "status": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"result\":{\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{\"listChanged\":false},\"resources\":{\"listChanged\":true}},\"resultType\":\"complete\",\"ttlMs\":0,\"cacheScope\":\"private\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"recorded-server\",\"version\":\"1.0.0\"}}},\"jsonrpc\":\"2.0\",\"id\":1}"},
+    {"method": "tools/list", "status": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"result\":{\"tools\":[{\"name\":\"tool-1\",\"description\":\"Recorded tool 1.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-2\",\"description\":\"Recorded tool 2.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-3\",\"description\":\"Recorded tool 3.\",\"inputSchema\":{\"type\":\"object\"}}],\"resultType\":\"complete\",\"ttlMs\":0,\"cacheScope\":\"private\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"recorded-server\",\"version\":\"1.0.0\"}}},\"jsonrpc\":\"2.0\",\"id\":1}"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://stateless-2025-06-initialized-empty-object.example/mcp",
+  "expected": {"version": "2025-06-18", "sessionId": false, "tools": 1},
+  "exchanges": [
+    {"method": "server/discover", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"server/discover\"}}"},
+    {"method": "initialize", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"prompts\":{\"listChanged\":true},\"resources\":{\"listChanged\":true},\"logging\":{}},\"serverInfo\":{\"name\":\"recorded-server\",\"version\":\"1.0.0\"}}}"},
+    {"method": "notifications/initialized", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8"}, "body": "{}"},
+    {"method": "tools/list", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"tool-1\",\"description\":\"Recorded tool 1.\",\"inputSchema\":{\"type\":\"object\"}}]}}"}
+  ]
+}

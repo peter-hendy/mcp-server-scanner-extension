@@ -1,0 +1,37 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+.DS_Store
+
+.worktrees/
+.claude
+
+# Scratch files — never commit.
+/scratch.md
+*.scratch
+# Internal planning, decision records and scratch — never commit.
+/docs/
+
+# Local MCP scanner comparison and development notes.
+/doc/
+__pycache__/
+
+# Third-party artifacts the CVE harness downloads and verifies (target.json "downloads").
+/cve-targets/.cache/
+
+# CVE-target harness run results (cveTargets / cveTargetsBurp write to build/cve-targets/,
+# already ignored by build/ above) and hand-written run logs.
+/build/cve-targets/
+/cve-targets/RESULTS.md
+/cve-targets/*/RESULTS.md

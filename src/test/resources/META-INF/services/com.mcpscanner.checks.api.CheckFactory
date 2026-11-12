@@ -1,0 +1,3 @@
+com.mcpscanner.checks.catalog.fixturereflection.ReflectedMarkerCheckFactory
+com.mcpscanner.checks.catalog.fixtureresend.ResendSucceedsCheckFactory
+com.mcpscanner.checks.catalog.fixturebanner.ServerBannerCheckFactory

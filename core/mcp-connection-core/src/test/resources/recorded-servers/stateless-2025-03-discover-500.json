@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://stateless-2025-03-discover-500.example/mcp",
+  "expected": {"version": "2025-03-26", "sessionId": false, "tools": 2},
+  "exchanges": [
+    {"method": "server/discover", "status": 500, "headers": {"Content-Type": "application/json"}, "body": "{\"timestamp\":\"2026-11-06T11:32:10.827+00:00\",\"path\":\"/mcp\",\"status\":500,\"error\":\"Internal Server Error\",\"requestId\":\"request-1\"}"},
+    {"method": "initialize", "status": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"recorded-server\",\"version\":\"1.0.0\"}}}"},
+    {"method": "notifications/initialized", "status": 202, "headers": {}, "body": ""},
+    {"method": "tools/list", "status": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"tool-1\",\"description\":\"Recorded tool 1.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-2\",\"description\":\"Recorded tool 2.\",\"inputSchema\":{\"type\":\"object\"}}]}}"}
+  ]
+}

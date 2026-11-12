@@ -1,0 +1,53 @@
+apply plugin: 'java-library'
+
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+tasks.named('compileJava') {
+    options.debugOptions.debugLevel = 'source,lines'
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+def selfTestClasses = fileTree('src/test/java') { include '**/*.java' }
+        .filter { it.text.contains('public static void main(') }
+        .collect { file('src/test/java').toPath().relativize(it.toPath()).toString().replace(File.separator, '.') - ~/\.java$/ }
+        .sort()
+
+def selfTests = tasks.register('selfTest') {
+    description = 'Runs every self-checking test main in this core module.'
+    group = 'verification'
+}
+
+selfTestClasses.each { mainClassName ->
+    def taskName = 'selfTest_' + mainClassName.replace('.', '_')
+    def marker = layout.buildDirectory.file("self-tests/${mainClassName}.passed")
+    def run = tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = mainClassName
+        workingDir = projectDir
+        inputs.files(sourceSets.test.runtimeClasspath)
+        outputs.file(marker)
+        doLast { marker.get().asFile.text = 'passed\n' }
+    }
+    selfTests.configure { dependsOn run }
+}
+
+tasks.named('test') {
+    dependsOn selfTests
+    filter.failOnNoMatchingTests = false
+}

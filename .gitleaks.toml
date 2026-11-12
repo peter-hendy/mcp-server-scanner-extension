@@ -1,0 +1,8 @@
+title = "mcp-server-scanner-extension"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "cve-targets/ holds deliberately vulnerable third-party test targets whose credentials, tokens, JWTs and keys are fake fixtures for local Docker containers"
+paths = ['''^cve-targets/''']

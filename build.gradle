@@ -1,0 +1,221 @@
+import com.github.jengelman.gradle.plugins.shadow.transformers.ApacheNoticeResourceTransformer
+import com.github.jengelman.gradle.plugins.shadow.transformers.AppendingTransformer
+
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+version = '2.0.0'
+
+// Jackson databind + core ship at 2.21.3 in the BOM; jackson-annotations is published as 2.21
+// (no patch suffix) by upstream as of the 2.21 line — these are the matched coordinates.
+ext.jacksonVersion = '2.22.4'
+ext.jacksonAnnotationsVersion = '2.22'
+
+def gitShortSha = providers.provider {
+    try {
+        providers.exec {
+            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+            ignoreExitValue = true
+        }.standardOutput.asText.map { it.trim() }.getOrElse('unknown')
+    } catch (Exception ignored) {
+        'unknown'
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+dependencies {
+    compileOnly 'net.portswigger.burp.extensions:montoya-api:2026.7'
+
+    implementation project(':mcp-protocol-core')
+    implementation project(':mcp-oauth-core')
+    implementation project(':mcp-connection-core')
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}"
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    implementation 'com.nimbusds:oauth2-oidc-sdk:11.38.2'
+    implementation 'org.jsoup:jsoup:1.23.2'
+
+    testImplementation 'net.portswigger.burp.extensions:montoya-api:2026.7'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.14.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.4'
+    testImplementation 'org.mockito:mockito-core:5.24.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.24.0'
+    testImplementation 'org.assertj:assertj-core:3.26.0'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.1'
+    testImplementation 'org.awaitility:awaitility:4.3.0'
+}
+
+shadowJar {
+    // Relocate third-party libraries to a project-specific namespace so this extension
+    // does not collide with other Burp extensions that ship different versions of the
+    // same libraries in the same classloader.
+    relocate 'com.fasterxml.jackson', 'com.mcpscanner.shaded.jackson'
+    relocate 'org.slf4j', 'com.mcpscanner.shaded.slf4j'
+    relocate 'com.nimbusds', 'com.mcpscanner.shaded.nimbusds'
+    relocate 'org.jsoup', 'com.mcpscanner.shaded.jsoup'
+    mergeServiceFiles()
+    // Ship the project's own LICENSE and NOTICE at the JAR root so downstream
+    // redistributors can see our terms without unpacking META-INF/.
+    from(rootProject.file('LICENSE'))
+    from(rootProject.file('NOTICE'))
+    // Aggregate transitive Apache-2.0 LICENSE files into a single META-INF/LICENSE.
+    // Shadow's ApacheLicenseResourceTransformer in 8.3.5 only deduplicates (drops them entirely);
+    // AppendingTransformer concatenates so attribution from every dep survives.
+    transform(AppendingTransformer) {
+        resource = 'META-INF/LICENSE'
+    }
+    transform(AppendingTransformer) {
+        resource = 'META-INF/LICENSE.txt'
+    }
+    transform(ApacheNoticeResourceTransformer) {
+        projectName = 'MCP Server Scanner'
+        organizationName = 'Peter Hendy'
+        organizationURL = 'https://github.com/peter-hendy/mcp-server-scanner-extension'
+        inceptionYear = '2026'
+        addHeader = false
+    }
+    manifest {
+        attributes(
+                'Implementation-Title': 'MCP Server Scanner',
+                'Implementation-Version': version,
+                'Implementation-Vendor': 'Peter Hendy',
+                'Implementation-Build': gitShortSha
+        )
+    }
+}
+
+tasks.jar.enabled = false
+
+tasks.withType(Test).configureEach {
+    systemProperty 'jdk.httpclient.allowRestrictedHeaders', 'host,connection,expect,upgrade'
+}
+
+tasks.named('test') {
+    maxHeapSize = '2g'
+    useJUnitPlatform {
+        excludeTags 'live', 'cve-target', 'cve-target-lifecycle', 'burp-canary', 'slow-link'
+    }
+}
+
+tasks.register('slowLinkTest', Test) {
+    description = 'Times Connect, Check access and an extension scan against the test-server through a 100 ms one-way delay relay. Needs uv.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'slow-link'
+    }
+    environment 'MCP_E2E_IT', '1'
+    outputs.upToDateWhen { false }
+    maxHeapSize = '2g'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+        exceptionFormat 'full'
+    }
+}
+
+def cveTargetTask = { String name, String tag, String text, String resultsPath = name ->
+    tasks.register(name, Test) {
+        description = text
+        group = 'verification'
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags tag
+        }
+        systemProperty 'cveTargets.root', file('cve-targets').absolutePath
+        systemProperty 'cveTargets.results', layout.buildDirectory.dir("cve-targets/${resultsPath}").get().asFile.absolutePath
+        ['check': 'check', 'target': 'target', 'cveSlots': 'slots', 'cveSlotsDir': 'slotsDir',
+         'cveParallel': 'parallel'].each { gradleProperty, harnessProperty ->
+            def value = providers.gradleProperty(gradleProperty).orNull
+            if (value != null) {
+                systemProperty "cveTargets.${harnessProperty}", value
+            }
+        }
+        if (providers.gradleProperty('smoke').map { it != 'false' }.getOrElse(false)) {
+            systemProperty 'cveTargets.smoke', 'true'
+        }
+        if (providers.gradleProperty('mine').map { it != 'false' }.getOrElse(false)) {
+            systemProperty 'cveTargets.mine', 'true'
+        }
+        if (providers.gradleProperty('mineUnannotated').map { it != 'false' }.getOrElse(false)) {
+            systemProperty 'cveTargets.mineUnannotated', 'true'
+        }
+        outputs.upToDateWhen { false }
+        maxHeapSize = '2g'
+        def resultsDirectory = layout.buildDirectory.dir("cve-targets/${resultsPath}")
+        doFirst { delete resultsDirectory }
+        testLogging {
+            events 'passed', 'skipped', 'failed', 'standard_error'
+            exceptionFormat 'full'
+        }
+    }
+}
+
+cveTargetTask('cveTargets', 'cve-target',
+        'Runs catalog checks against Docker CVE targets. Select with -Pcheck=<check-id> and/or -Ptarget=<target-id>; -Psmoke keeps only targets marked smoke; -Pmine runs the access mining measurement instead of the checks.')
+cveTargetTask('cveTargetsLifecycle', 'cve-target-lifecycle',
+        'Proves the CVE target harness lifecycle against every selected ported target with a test-only probe check.')
+
+def burpConfig = providers.gradleProperty('burpConfig').getOrElse('extensions-only')
+def allChecks = providers.gradleProperty('allChecks').map { it != 'false' }.getOrElse(false)
+cveTargetTask('cveTargetsBurp', 'cve-target',
+        'Runs the same CVE targets through headless Burp Suite Professional with the extension loaded. Select with -Pcheck, -Ptarget, -Psmoke and -PburpConfig=extensions-only|with-builtins; -PallChecks brings each target build up once and audits it with every check.',
+        "cveTargetsBurp/${burpConfig}${allChecks ? '-all-checks' : ''}")
+def headlessBurp = { Test task, String workDirectory ->
+    task.dependsOn tasks.named('shadowJar')
+    task.systemProperty 'cveTargets.burp.extensionJar', tasks.named('shadowJar').get().archiveFile.get().asFile.absolutePath
+    task.systemProperty 'cveTargets.burp.work', layout.buildDirectory.dir(workDirectory).get().asFile.absolutePath
+    ['burpJar': 'jar', 'burpJava': 'java', 'burpHeap': 'heap', 'burpNetworking': 'networking',
+     'burpQuietSeconds': 'quietSeconds', 'burpStartupSeconds': 'startupSeconds',
+     'burpArmTimeoutSeconds': 'armTimeoutSeconds', 'burpArmsPerBurp': 'armsPerBurp'].each { gradleProperty, harnessProperty ->
+        def value = providers.gradleProperty(gradleProperty).orNull
+        if (value != null) {
+            task.systemProperty "cveTargets.burp.${harnessProperty}", value
+        }
+    }
+}
+
+tasks.named('cveTargetsBurp') {
+    headlessBurp(it, 'cve-targets-burp-work')
+    systemProperty 'cveTargets.mode', 'burp'
+    systemProperty 'cveTargets.parallel', providers.gradleProperty('cveParallel').getOrElse('1')
+    systemProperty 'cveTargets.burp.config', burpConfig
+    if (allChecks) {
+        systemProperty 'cveTargets.allChecks', 'true'
+    }
+}
+
+tasks.register('burpCanary', Test) {
+    description = 'Measures extension send latency through headless Burp Suite Professional against a local keep-alive server (no Docker). Select the Burp jar with -PburpJar or BURP_JAR.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'burp-canary'
+    }
+    headlessBurp(it, 'burp-canary-work')
+    outputs.upToDateWhen { false }
+    testLogging {
+        events 'passed', 'skipped', 'failed', 'standard_out', 'standard_error'
+        exceptionFormat 'full'
+    }
+}

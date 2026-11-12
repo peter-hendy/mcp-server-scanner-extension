@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://stateful-2025-03-session-on-discover.example/mcp",
+  "expected": {"version": "2025-03-26", "sessionId": true, "tools": 6},
+  "exchanges": [
+    {"method": "server/discover", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8", "Mcp-Session-Id": "session-1"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":{\"method\":\"server/discover\"}}}"},
+    {"method": "initialize", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8", "Mcp-Session-Id": "session-2"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"prompts\":{}},\"serverInfo\":{\"name\":\"recorded-server\",\"version\":\"1.0.0\"},\"sessionId\":\"session-in-body\"}}"},
+    {"method": "notifications/initialized", "status": 202, "headers": {}, "body": ""},
+    {"method": "tools/list", "status": 200, "headers": {"Content-Type": "application/json; charset=utf-8", "Mcp-Session-Id": "session-2"}, "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"tool-1\",\"description\":\"Recorded tool 1.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-2\",\"description\":\"Recorded tool 2.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-3\",\"description\":\"Recorded tool 3.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-4\",\"description\":\"Recorded tool 4.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-5\",\"description\":\"Recorded tool 5.\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"tool-6\",\"description\":\"Recorded tool 6.\",\"inputSchema\":{\"type\":\"object\"}}]}}"}
+  ]
+}

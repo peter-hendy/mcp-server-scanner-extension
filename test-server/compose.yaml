@@ -1,0 +1,13 @@
+services:
+  mcp-test-server:
+    build: .
+    image: mcp-test-server:local
+    ports:
+      - "127.0.0.1:${MCP_TEST_HOST_PORT:-8000}:8000"
+    environment:
+      MCP_TEST_PUBLIC_URL: ${MCP_TEST_PUBLIC_URL:-http://127.0.0.1:8000}
+      MCP_TEST_DEFAULT_MODE: ${MCP_TEST_DEFAULT_MODE:-vulnerable}
+      MCP_TEST_VULNS: ${MCP_TEST_VULNS:-}
+      MCP_TEST_DISABLED_FAMILIES: ${MCP_TEST_DISABLED_FAMILIES:-}
+      MCP_TEST_CONSENT: ${MCP_TEST_CONSENT:-prompt}
+      MCP_TEST_ALLOWED_HOSTS: ${MCP_TEST_ALLOWED_HOSTS:-localhost,127.0.0.1,::1,mcp-test-server}

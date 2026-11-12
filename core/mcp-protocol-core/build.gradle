@@ -1,0 +1,11 @@
+apply from: rootProject.file('core/core-module.gradle')
+
+tasks.named('jar') {
+    manifest {
+        attributes(
+                'Implementation-Title': 'MCP Protocol Core',
+                'Implementation-Version': version,
+                'Automatic-Module-Name': 'com.mcpscanner.core.protocol'
+        )
+    }
+}
