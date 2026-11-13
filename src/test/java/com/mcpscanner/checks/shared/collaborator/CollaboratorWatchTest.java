@@ -3,6 +3,7 @@ package com.mcpscanner.checks.shared.collaborator;
 import burp.api.montoya.collaborator.CollaboratorPayload;
 import burp.api.montoya.collaborator.Interaction;
 import burp.api.montoya.collaborator.InteractionType;
+import com.mcpscanner.checks.shared.scancontext.CurrentInvocation;
 import com.mcpscanner.logging.McpEventLog;
 import com.mcpscanner.testutil.MutableClock;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,38 @@ class CollaboratorWatchTest {
 
         assertThat(heard).singleElement().satisfies(observed -> assertThat(observed.of(payload)).hasSize(1));
         assertThat(watch.watchedCount()).isZero();
+    }
+
+    @Test
+    void aRegistrationKeepsTheCurrentInvocationsExchangesUntilItResolves() {
+        RecordingLease lease = new RecordingLease();
+        CollaboratorPayload payload = minted();
+        CurrentInvocation.holding(lease, () -> {
+            watch.watch(List.of(payload), listening(WatchDecision.DONE));
+            return null;
+        });
+        lease.close();
+        assertThat(lease.retentionsReleased()).isZero();
+
+        collaborator.interact(payload, InteractionType.HTTP);
+        ticker.tick();
+
+        assertThat(lease.retentionsTaken()).isEqualTo(1);
+        assertThat(lease.retentionsReleased()).isEqualTo(1);
+    }
+
+    @Test
+    void aRegistrationReleasesItsExchangesWhenItExpiresUnanswered() {
+        RecordingLease lease = new RecordingLease();
+        CurrentInvocation.holding(lease, () -> {
+            watch.watch(List.of(minted()), listening(WatchDecision.DONE));
+            return null;
+        });
+
+        clock.advance(CollaboratorWatch.PENDING_LIFETIME.plusSeconds(1));
+        ticker.tick();
+
+        assertThat(lease.retentionsReleased()).isEqualTo(1);
     }
 
     @Test
@@ -274,5 +307,33 @@ class CollaboratorWatchTest {
             heard.add(observed);
             return decision;
         };
+    }
+
+    private static final class RecordingLease implements com.mcpscanner.http.ExchangeLease {
+
+        private int taken;
+        private int released;
+
+        @Override
+        public void hold(burp.api.montoya.http.message.HttpRequestResponse proxied) {
+        }
+
+        @Override
+        public com.mcpscanner.http.ExchangeRetention retainBeyondClose() {
+            taken++;
+            return () -> released++;
+        }
+
+        @Override
+        public void close() {
+        }
+
+        int retentionsTaken() {
+            return taken;
+        }
+
+        int retentionsReleased() {
+            return released;
+        }
     }
 }

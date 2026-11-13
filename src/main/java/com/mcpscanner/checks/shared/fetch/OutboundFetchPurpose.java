@@ -1,15 +1,16 @@
-package com.mcpscanner.checks.catalog.outboundrequest;
+package com.mcpscanner.checks.shared.fetch;
 
 import com.mcpscanner.mcp.McpMethods;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class OutboundFetchPurpose {
+public final class OutboundFetchPurpose {
 
     private static final Set<String> NAMED_OPERATIONS_WITH_ARGUMENTS =
             Set.of(McpMethods.TOOLS_CALL, McpMethods.PROMPTS_GET);
@@ -21,13 +22,13 @@ final class OutboundFetchPurpose {
             "request", "get", "content", "html", "markdown");
     private static final Set<String> URL_ARGUMENT_WORDS = Set.of("url", "uri", "link", "href");
 
-    boolean fetchesByDesign(McpEnvelope envelope, String fieldName) {
-        if (!NAMED_OPERATIONS_WITH_ARGUMENTS.contains(envelope.method())) {
+    public boolean fetchesByDesign(String method, Optional<String> operation, String fieldName) {
+        if (!NAMED_OPERATIONS_WITH_ARGUMENTS.contains(method)) {
             return false;
         }
         Matcher argument = ARGUMENT_FIELD.matcher(fieldName);
         return argument.matches()
-                && envelope.target().filter(OutboundFetchPurpose::genericFetchOperation).isPresent()
+                && operation.filter(OutboundFetchPurpose::genericFetchOperation).isPresent()
                 && words(argument.group(1)).stream().anyMatch(URL_ARGUMENT_WORDS::contains);
     }
 

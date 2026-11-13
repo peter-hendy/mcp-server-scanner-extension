@@ -12,9 +12,9 @@ public interface MiningDialogs {
 
     MiningDialogs MODAL = new ModalMiningDialogs();
 
-    MineFirstChoice mineFirst(Component parent, List<String> tools);
+    MineFirstChoice mineFirst(Component parent, ToolsToCall tools);
 
-    boolean confirmMining(Component parent, List<String> tools);
+    boolean confirmMining(Component parent, ToolsToCall tools);
 
     ClearChoice clearMined(Component parent, String userName);
 

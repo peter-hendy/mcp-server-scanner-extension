@@ -14,7 +14,7 @@ How the extension fits together. For build commands and the rules agents must fo
 - **Initialize-based Streamable HTTP**: `initialize` + `notifications/initialized`, version negotiation, `Mcp-Session-Id`.
 - **Legacy SSE**: open the event stream, read the `endpoint` event for the message URL.
 
-**Networking.** HTTP traffic goes through Burp's own HTTP stack while "Send requests through Burp" is on (the default), so Burp's client TLS certificates, upstream proxy and TLS settings apply; otherwise it goes through the JDK client. SSE always uses the JDK client, because Burp cannot read an open event stream. Burp also refuses `text/event-stream` replies to extensions; the Burp transport detects that (`mcp/BurpStreamingRefusal`) and either falls back to the JDK client for that route or offers to turn the setting off.
+**Networking.** HTTP traffic goes through Burp's own HTTP stack while "Send requests through Burp" is on (the default), so Burp's client TLS certificates, upstream proxy and TLS settings apply; otherwise it goes through the JDK client. SSE always uses the JDK client, because Burp cannot read an open event stream. Burp also refuses `text/event-stream` replies to extensions; the Burp transport detects that (`mcp/BurpStreamingRefusal`) and either falls back to the JDK client for that route or offers to turn the setting off. Burp reports every streamed reply as a refusal (first, repeated, concurrent or on a reused connection) and returns an empty reply only when the server sent nothing before closing, so an empty reply is never taken for a stream and a call that may write is never resent after one. A check's `StreamingFallback` covers probes that do not go through the proxy and tells `StreamingRefusalWatch` (`OutsideBurpSends.streamRefused`) when Burp refused one; a check opening its own stream outside Burp is not a refusal.
 
 **Connection reuse.** Burp keeps an extension's HTTP/1 connection alive only when a send names a connection id, and otherwise waits for the server to close after each reply. `ConnectionReusingHttp` names one for origins known to speak HTTP/1.x. A kept-alive connection the server closed before replying is resent once on a fresh connection, but only for reads and handshakes (`mcp/ResendableRequests`), never writes.
 
@@ -28,7 +28,8 @@ The MCP protocol, OAuth and connection-core logic (framing, negotiation, respons
 - rewrites JSON-RPC ids so concurrent scan requests stay distinct, and restores the scanner's id on the reply;
 - injects the primary user's credentials and live `Mcp-Session-Id`, re-handshaking on session-not-found (but forwards a fuzzed, unknown session id unchanged);
 - re-frames every forwarded body (routing headers and `Mcp-Param-*` headers derived from the body), so a check that swaps a body only needs `withBody`;
-- relays upstream status and headers faithfully, and relays HTTP errors on handshakes instead of turning them into 502s.
+- relays upstream status and headers faithfully, and relays HTTP errors on handshakes instead of turning them into 502s;
+- forwards a scanned `initialize` (Burp's or a check's fuzzed copy of the generated one) in a session or SSE stream of its own, never on the live session, because a server that accepts a second `initialize` resets the session and every later request on it fails (`HttpForwarding`, `IsolatedHttpForwarder.forwardInitialize`, `SseForwarding`).
 
 Scanner-internal **sentinel headers** (`ScannerSentinels`, `X-Mcp-Scanner-*`) steer routing: direct delivery (bypass the proxy), strip credentials, run as another identity, keep the live session. They are stripped before anything goes upstream. The proxy refuses browser-originated requests (`Origin` / `Sec-Fetch-*`) that do not carry its per-load routing key, so a DNS-rebinding page cannot use the loopback port.
 
@@ -76,7 +77,7 @@ Montoya cannot start an audit without Burp's built-in checks, so `engine/McpScan
 ## Users and Check access
 
 - `identity` — every user (one **primary user** that Connect and Scan run as, plus compared users), their in-memory credentials and owned values. Credentials are bound to the endpoint's origin and cleared when it changes.
-- `access/mining` — "Collect IDs": calls read-only tools as each user to learn which object ids are theirs. Write tools run only when opted in and confirmed.
+- `access/mining` — "Collect IDs": calls read-only tools as each user to learn which object ids are theirs. Write tools run only when opted in and confirmed. Every user's calls in a pass run concurrently on as many workers as extension scans use (`mcp.scan.engine_workers`); each pass waits for the previous one because it feeds that pass's IDs. By default a user is sent whatever their passes need; `mcp.mining.requests_per_user` sets an optional ceiling.
 - `access/comparison` — Check access: per item, the owner's request, a replay as each compared user and an anonymous replay, with escalation probes where they can matter. Operation-level findings are filed as Burp issues; object-level ones only when a hand-entered private marker proves them, otherwise they stay on the Access grid as possible leaks.
 
 ## Running checks outside Burp

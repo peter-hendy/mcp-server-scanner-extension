@@ -6,7 +6,7 @@ plugins {
     id 'com.gradleup.shadow' version '8.3.5'
 }
 
-version = '2.0.0'
+version = '2.1.0'
 
 // Jackson databind + core ship at 2.21.3 in the BOM; jackson-annotations is published as 2.21
 // (no patch suffix) by upstream as of the 2.21 line — these are the matched coordinates.
@@ -60,6 +60,7 @@ dependencies {
     testImplementation 'org.assertj:assertj-core:3.26.0'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.1'
     testImplementation 'org.awaitility:awaitility:4.3.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.53.4.0'
 }
 
 shadowJar {
@@ -115,7 +116,7 @@ tasks.named('test') {
 }
 
 tasks.register('slowLinkTest', Test) {
-    description = 'Times Connect, Check access and an extension scan against the test-server through a 100 ms one-way delay relay. Needs uv.'
+    description = 'Times Connect, Check access, Collect IDs and an extension scan against the test-server through a 100 ms one-way delay relay. Needs uv.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath

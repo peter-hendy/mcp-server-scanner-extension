@@ -2,6 +2,7 @@ package com.mcpscanner.checks.shared.collaborator;
 
 import burp.api.montoya.collaborator.CollaboratorClient;
 import burp.api.montoya.collaborator.CollaboratorPayload;
+import burp.api.montoya.collaborator.CollaboratorServer;
 import burp.api.montoya.collaborator.Interaction;
 
 import java.time.Duration;
@@ -53,6 +54,10 @@ final class CollaboratorInteractions {
             forget(minted);
             throw failure;
         }
+    }
+
+    public Optional<CollaboratorServer> server() {
+        return client().flatMap(CollaboratorInteractions::serverOf);
     }
 
     public Optional<InteractionWindow> declaredWindow() {
@@ -132,6 +137,14 @@ final class CollaboratorInteractions {
     private static Optional<CollaboratorPayload> generate(CollaboratorClient active) {
         try {
             return Optional.ofNullable(active.generatePayload());
+        } catch (RuntimeException unavailable) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<CollaboratorServer> serverOf(CollaboratorClient active) {
+        try {
+            return Optional.ofNullable(active.server());
         } catch (RuntimeException unavailable) {
             return Optional.empty();
         }
