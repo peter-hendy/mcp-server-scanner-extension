@@ -157,7 +157,7 @@ public class McpScannerTab extends JPanel {
         this.oauthClient = new OAuthClientSection(serverConfigPanel, this::requestDisconnect);
         this.identities = new UsersView(deps.identities(),
                 IdentityConnection.of(this::isConnected, this::isConnecting, this::reconnectAs,
-                        this::connectedIdentity), this, eventLog::warn, serverConfigPanel, this::openUsers,
+                        this::connectedIdentity), deps.dialogOwner(), this, eventLog::warn, serverConfigPanel, this::openUsers,
                 this::openOAuthClient);
         this.stopGrantFieldsFollowingPrimary = GrantFieldsFollowPrimary.watch(deps.identities().registry(),
                 serverConfigPanel.grantForms());
@@ -240,7 +240,7 @@ public class McpScannerTab extends JPanel {
         scans.onWritesConfirmed(access.confirmations()::confirm);
         AccessPanel panel = new AccessPanel(access, new AccessApprovals(
                 writeReplayApproval(DestructiveScanGate.forCheckAccess(configStore, deps.destructiveScanPrompt())),
-                new MiningWriteConfirmation(WriteCallPrompt.MODAL, this)),
+                new MiningWriteConfirmation(deps.destructiveScanPrompt()::askLines, this)),
                 this::repeater, eventLog::error);
         scans.gateLaunches(panel.mineFirst());
         panel.setIdentityShortcuts(new IdentitySectionShortcuts());
@@ -288,7 +288,7 @@ public class McpScannerTab extends JPanel {
         inventory.bindSendTo(new SendToMenu(() -> sendToDestinations, this::sendToUnavailableReason,
                 deps.logging()::logToError, () -> sendToShortcuts), repeaterRequests());
         inventory.bindScans(scans.itemScanner(), deps.scanModeSetting()::current);
-        inventory.bindCompletion(ValueCompletion.forClient(clientManager, this::isConnected));
+        inventory.bindCompletion(ValueCompletion.forClient(clientManager, this::isConnected, deps.dialogOwner()));
         inventory.tools().setSelectionPersistence(configStore, this::activeEndpoint);
         inventory.addTo(inventoryTabs);
     }

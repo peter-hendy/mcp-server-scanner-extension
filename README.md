@@ -29,7 +29,7 @@ Each check has a toggle in the **Scan Checks** tab. Severity is the headline rat
 | MCP file path traversal | per field | High |
 | **MCP SQL injection** | per field (and each host or path segment of a URI value) | High / Firm when SQL-only syntax (a `--` line comment or backtick identifier quoting) and a second, independent syntax family each reproduce the baseline reply while a same-characters falsifier changes it, confirmed over three rounds; High / Tentative with one family. A field that runs whole SQL statements by design (a SQL console tool) is not reported |
 | MCP outbound request (Collaborator-backed, including payloads after a URL value's own host to pass prefix allowlists, and OAuth registration URL fields) | per field | Medium |
-| **MCP SSRF address filter bypass** (Collaborator-backed) | per field (URL argument of fetch, browse and scrape tools) | High / Firm when a tool refuses a loopback URL but accepts loopback in an alternate spelling (IPv4-mapped IPv6, hexadecimal, decimal, octal, shortened IPv4) and fetches the same spelling of the Collaborator address |
+| **MCP SSRF address filter bypass** (Collaborator-backed) | per field (URL argument of fetch, browse and scrape tools) | High / Firm when the reply to the loopback spelling contains the target's own page; High / Tentative when the spelling is only no longer refused and the same spelling of the Collaborator address is fetched |
 | MCP downstream route escape | per field | Information |
 | MCP JWT access token validation | per host | High |
 | MCP OAuth refresh grant validation | per host | Medium |
@@ -46,7 +46,7 @@ Each check has a toggle in the **Scan Checks** tab. Severity is the headline rat
 ./gradlew shadowJar
 ```
 
-Output: `build/libs/mcp-server-scanner-extension-2.1.0-all.jar`.
+Output: `build/libs/mcp-server-scanner-extension-2.1.1-all.jar`.
 
 Requires Java 17.
 

@@ -232,6 +232,72 @@ class CollaboratorWatchTest {
     }
 
     @Test
+    void anUnhintedClientIsPolledAtMostOncePerMinuteAcrossTicksAndAwaitSettled() {
+        PollRecordingCollaborator real = new PollRecordingCollaborator();
+        CollaboratorWatch standardWatch = new CollaboratorWatch(() -> Optional.of(real), eventLog, ticker,
+                new WatchTiming(clock, clock::advance, InteractionWindow.standard()));
+
+        for (int second = 0; second < 150; second++) {
+            standardWatch.watch(List.of(mintedBy(standardWatch)),
+                    listening(WatchDecision.KEEP_WATCHING));
+            ticker.tick();
+            clock.advance(Duration.ofSeconds(1));
+        }
+        standardWatch.watch(List.of(mintedBy(standardWatch)),
+                listening(WatchDecision.KEEP_WATCHING));
+        standardWatch.awaitSettled();
+        standardWatch.awaitSettled();
+        ticker.tick();
+
+        assertThat(standardWatch.settled()).isTrue();
+        assertThat(real.polledAt()).hasSizeGreaterThanOrEqualTo(3);
+        for (int poll = 1; poll < real.polledAt().size(); poll++) {
+            assertThat(Duration.between(real.polledAt().get(poll - 1), real.polledAt().get(poll)))
+                    .isGreaterThanOrEqualTo(Duration.ofSeconds(60));
+        }
+    }
+
+    @Test
+    void awaitSettledJustAfterAPollWaitsForTheNextPollAMinuteLater() {
+        CollaboratorWatch standardWatch = new CollaboratorWatch(() -> Optional.of(collaborator), eventLog, ticker,
+                new WatchTiming(clock, clock::advance, InteractionWindow.standard()));
+        standardWatch.watch(List.of(mintedBy(standardWatch)),
+                listening(WatchDecision.KEEP_WATCHING));
+        ticker.tick();
+        standardWatch.watch(List.of(mintedBy(standardWatch)),
+                listening(WatchDecision.KEEP_WATCHING));
+        Instant started = clock.instant();
+
+        standardWatch.awaitSettled();
+
+        assertThat(standardWatch.settled()).isTrue();
+        assertThat(Duration.between(started, clock.instant())).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void awaitSettledNeverPausesForANegativeTimeWhenTheDeadlinePassesMidLoop() {
+        List<Duration> pauses = new ArrayList<>();
+        for (long creepMillis = 1; creepMillis < 4_000; creepMillis += 13) {
+            awaitSettledWhileProbesKeepArriving(new CreepingClock(clock, Duration.ofMillis(creepMillis)), pauses);
+        }
+
+        assertThat(pauses).isNotEmpty().allSatisfy(pause -> assertThat(pause).isPositive());
+    }
+
+    private void awaitSettledWhileProbesKeepArriving(java.time.Clock creeping, List<Duration> pauses) {
+        List<CollaboratorWatch> holder = new ArrayList<>();
+        CollaboratorWatch unsettling = new CollaboratorWatch(() -> Optional.of(collaborator), eventLog, ticker,
+                new WatchTiming(creeping, duration -> {
+                    pauses.add(duration);
+                    clock.advance(duration);
+                    holder.get(0).watch(List.of(mintedBy(holder.get(0))), listening(WatchDecision.KEEP_WATCHING));
+                }, InteractionWindow.standard()));
+        holder.add(unsettling);
+        unsettling.watch(List.of(mintedBy(unsettling)), listening(WatchDecision.KEEP_WATCHING));
+        unsettling.awaitSettled();
+    }
+
+    @Test
     void awaitSettledReturnsAtOnceWhenNothingIsWatched() {
         Instant started = clock.instant();
 
@@ -299,7 +365,11 @@ class CollaboratorWatchTest {
     }
 
     private CollaboratorPayload minted() {
-        return watch.probing(source -> source.newPayload().orElseThrow());
+        return mintedBy(watch);
+    }
+
+    private static CollaboratorPayload mintedBy(CollaboratorWatch minter) {
+        return minter.probing(source -> source.newPayload().orElseThrow());
     }
 
     private InteractionListener listening(WatchDecision decision) {
@@ -307,6 +377,48 @@ class CollaboratorWatchTest {
             heard.add(observed);
             return decision;
         };
+    }
+
+    private static final class CreepingClock extends java.time.Clock {
+
+        private final MutableClock base;
+        private final Duration perRead;
+
+        CreepingClock(MutableClock base, Duration perRead) {
+            this.base = base;
+            this.perRead = perRead;
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return base.getZone();
+        }
+
+        @Override
+        public java.time.Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            base.advance(perRead);
+            return base.instant();
+        }
+    }
+
+    private final class PollRecordingCollaborator extends FakeCollaborator {
+
+        private final List<Instant> polledAt = new ArrayList<>();
+
+        @Override
+        public synchronized List<Interaction> getAllInteractions() {
+            polledAt.add(clock.instant());
+            return super.getAllInteractions();
+        }
+
+        synchronized List<Instant> polledAt() {
+            return List.copyOf(polledAt);
+        }
     }
 
     private static final class RecordingLease implements com.mcpscanner.http.ExchangeLease {

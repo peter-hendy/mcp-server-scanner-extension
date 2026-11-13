@@ -22,6 +22,7 @@ public final class CollaboratorWatch {
     public static final Duration PENDING_LIFETIME = Duration.ofMinutes(15);
     public static final int MAX_PENDING = 10_000;
     private static final int SETTLE_GRACE_POLLS = 3;
+    private static final Duration SHORTEST_PAUSE = Duration.ofMillis(1);
 
     private final CollaboratorInteractions interactions;
     private final McpEventLog eventLog;
@@ -101,12 +102,19 @@ public final class CollaboratorWatch {
         InteractionWindow window = window();
         Instant deadline = timing.clock().instant().plus(window.settle())
                 .plus(window.pollInterval().multipliedBy(SETTLE_GRACE_POLLS));
-        tickPolling(Duration.ZERO);
+        tick();
         while (!settled() && timing.clock().instant().isBefore(deadline)
                 && !Thread.currentThread().isInterrupted()) {
-            timing.pause().pause(window.pollInterval());
+            timing.pause().pause(untilNextPollOrDeadline(window, deadline));
             tick();
         }
+    }
+
+    private Duration untilNextPollOrDeadline(InteractionWindow window, Instant deadline) {
+        Duration untilPoll = interactions.untilPollDue(window.pollInterval());
+        Duration untilDeadline = Duration.between(timing.clock().instant(), deadline);
+        Duration wait = untilPoll.compareTo(untilDeadline) < 0 ? untilPoll : untilDeadline;
+        return wait.compareTo(SHORTEST_PAUSE) < 0 ? SHORTEST_PAUSE : wait;
     }
 
     public void shutdown() {
@@ -117,7 +125,14 @@ public final class CollaboratorWatch {
     }
 
     void tick() {
-        tickPolling(window().pollInterval());
+        synchronized (tickLock) {
+            Instant polledAt = timing.clock().instant();
+            if (watchedCount() > 0 && interactions.pollIfDue(window().pollInterval())) {
+                markSettledBy(polledAt);
+            }
+            current().forEach(this::deliverNews);
+            expire(timing.clock().instant());
+        }
     }
 
     private void tickSurvivingFailure() {
@@ -125,17 +140,6 @@ public final class CollaboratorWatch {
             tick();
         } catch (RuntimeException failure) {
             eventLog.error("Collaborator watch: polling failed; still watching: " + failure, failure);
-        }
-    }
-
-    private void tickPolling(Duration minimumInterval) {
-        synchronized (tickLock) {
-            Instant polledAt = timing.clock().instant();
-            if (watchedCount() > 0 && interactions.pollIfDue(minimumInterval)) {
-                markSettledBy(polledAt);
-            }
-            current().forEach(this::deliverNews);
-            expire(timing.clock().instant());
         }
     }
 
