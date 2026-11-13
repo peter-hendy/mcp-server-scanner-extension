@@ -3,7 +3,6 @@ package com.mcpscanner;
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 import com.mcpscanner.access.OwnerRequests;
-import com.mcpscanner.automation.TestAutomationSwitch;
 import com.mcpscanner.client.servercard.ServerCardFetcher;
 import com.mcpscanner.engine.McpScanEngine;
 import com.mcpscanner.ui.BurpNetworkingPrompt;
@@ -36,14 +35,14 @@ import java.util.function.Supplier;
 
 public class McpScannerExtension implements BurpExtension {
 
-    private final TestAutomationSwitch testAutomation;
+    private final ExtensionAutomation automation;
 
     public McpScannerExtension() {
-        this(TestAutomationSwitch.fromSystemProperties());
+        this(ExtensionAutomation.installed());
     }
 
-    McpScannerExtension(TestAutomationSwitch testAutomation) {
-        this.testAutomation = testAutomation;
+    McpScannerExtension(ExtensionAutomation automation) {
+        this.automation = automation;
     }
 
     @Override
@@ -51,7 +50,6 @@ public class McpScannerExtension implements BurpExtension {
         api.extension().setName(ExtensionMetadata.NAME);
         ExtensionFoundation foundation = ExtensionFoundation.create(api);
         ConnectionWiring connection = ConnectionWiring.create(api, foundation);
-        TestAutomationWiring automation = new TestAutomationWiring(testAutomation);
         OAuthWiring oauth = OAuthWiring.create(api, foundation, connection.burpHttp());
         IdentityWiring identities = IdentityWiring.create(api, foundation, connection, oauth);
         AccessWiring access = AccessWiring.create(foundation, connection, identities.listings(), identities.discovery());

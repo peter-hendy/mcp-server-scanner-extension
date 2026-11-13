@@ -21,6 +21,6 @@ class ExtensionMetadataTest {
         assertThat(ExtensionMetadata.VERSION).isNotBlank();
         // In the test/IDE context the class is not loaded from the fat JAR, so the
         // manifest implementation version is absent and VERSION uses the fallback.
-        assertThat(ExtensionMetadata.VERSION).isEqualTo("2.1.1");
+        assertThat(ExtensionMetadata.VERSION).isEqualTo("2.1.2");
     }
 }
