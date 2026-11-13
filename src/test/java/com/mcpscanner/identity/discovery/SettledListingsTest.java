@@ -1,4 +1,4 @@
-package com.mcpscanner.automation;
+package com.mcpscanner.identity.discovery;
 
 import com.mcpscanner.auth.BearerTokenAuthStrategy;
 import com.mcpscanner.client.ConnectResult;
@@ -10,9 +10,6 @@ import com.mcpscanner.identity.IdentityAuthKind;
 import com.mcpscanner.identity.IdentityRegistry;
 import com.mcpscanner.identity.IdentityRole;
 import com.mcpscanner.identity.IdentityStore;
-import com.mcpscanner.identity.discovery.DiscoveryOutcome;
-import com.mcpscanner.identity.discovery.IdentityDiscoveryService;
-import com.mcpscanner.identity.discovery.IdentityListings;
 import com.mcpscanner.logging.McpEventLog;
 import com.mcpscanner.testutil.InMemoryPersistedObject;
 import org.junit.jupiter.api.AfterEach;

@@ -10,7 +10,7 @@ import com.mcpscanner.automation.ConfirmedAccessRows;
 import com.mcpscanner.automation.HeadlessCheckAccess;
 import com.mcpscanner.automation.HeadlessConnection;
 import com.mcpscanner.automation.HeadlessMining;
-import com.mcpscanner.automation.SettledListings;
+import com.mcpscanner.identity.discovery.SettledListings;
 import com.mcpscanner.automation.BaseRequestLedger;
 import com.mcpscanner.automation.BuiltInTrafficSink;
 import com.mcpscanner.automation.CommandSettings;

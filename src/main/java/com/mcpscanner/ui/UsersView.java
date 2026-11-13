@@ -43,7 +43,7 @@ final class UsersView {
         this.refusals = deps.refusals();
         this.credentialServices = deps.credentialServices().apply(new PanelAuthSettings(serverConfig),
                 new SwingScopeApprovals(dialogParent, declineLog));
-        this.services = new IdentityUiServices(registry, credentialServices, deps.listings(), deps.refusals(),
+        this.services = new IdentityUiServices(registry, credentialServices, deps.listings(), deps.discovery(), deps.refusals(),
                 connection, deps.reconnectPrompt());
         this.panel = new UsersPanel(services, serverConfig.grantForms(), openOAuthClient);
         this.chip = panel.scanAsChip();

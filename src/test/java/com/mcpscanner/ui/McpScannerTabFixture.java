@@ -16,6 +16,7 @@ import com.mcpscanner.identity.ToolCallRefusals;
 import com.mcpscanner.identity.credentials.IdentityCredentialServices;
 import com.mcpscanner.auth.oauth.OAuthClientHints;
 import com.mcpscanner.identity.credentials.ScopeApprovals;
+import com.mcpscanner.identity.discovery.ComparedDiscovery;
 import com.mcpscanner.identity.discovery.IdentityListings;
 import com.mcpscanner.auth.CurrentAuthHolder;
 import com.mcpscanner.auth.grants.OptionalGrantSettings;
@@ -97,6 +98,17 @@ final class McpScannerTabFixture {
     final IdentityRegistry identities = new IdentityRegistry(
             new IdentityStore(InMemoryPersistedObject.configStore(), McpEventLog.noop()));
     final IdentityListings identityListings = new IdentityListings();
+    final ComparedDiscovery comparedDiscovery =
+            new ComparedDiscovery() {
+                @Override
+                public void discover(String identityId) {
+                }
+
+                @Override
+                public boolean credentialChangedSinceDiscovery(String identityId) {
+                    return false;
+                }
+            };
     final ToolCallRefusals toolCallRefusals = new ToolCallRefusals(identities);
     BiFunction<URI, OptionalGrantSettings, AuthStrategy> optionalGrants = ConnectCoordinator.NO_OPTIONAL_GRANTS;
     Map<String, String> scanOwnerArguments = Map.of();
@@ -168,7 +180,7 @@ final class McpScannerTabFixture {
                     }
                 },
                 parent -> burpNetworkingPrompt.offerToTurnOff(parent),
-                new IdentityDependencies(identities, identityListings, toolCallRefusals, this::identityCredentials,
+                new IdentityDependencies(identities, identityListings, comparedDiscovery, toolCallRefusals, this::identityCredentials,
                         (parent, user, previous) -> reconnectPrompt.confirm(parent, user, previous)),
                 new com.mcpscanner.scan.OwnerArgumentSource() {
                     @Override

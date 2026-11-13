@@ -3,10 +3,12 @@ package com.mcpscanner.checks.shared.collaborator;
 import burp.api.montoya.collaborator.CollaboratorClient;
 import burp.api.montoya.collaborator.CollaboratorPayload;
 import burp.api.montoya.http.message.HttpRequestResponse;
+import com.mcpscanner.checks.shared.scancontext.CurrentInvocation;
 import com.mcpscanner.checks.shared.scancontext.CurrentScan;
 import com.mcpscanner.http.TempFileCopies;
 import com.mcpscanner.logging.McpEventLog;
 
+import java.net.Inet4Address;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,6 +28,7 @@ public final class CollaboratorWatch {
     private final WatchTicker ticker;
     private final WatchTiming timing;
     private final TempFileCopies copies;
+    private final CollaboratorServerAddress serverAddress = new CollaboratorServerAddress();
     private final List<WatchedProbe> watched = new ArrayList<>();
     private final Object tickLock = new Object();
     private boolean ticking;
@@ -58,6 +61,10 @@ public final class CollaboratorWatch {
         return interactions.available();
     }
 
+    public Optional<Inet4Address> serverIpv4() {
+        return serverAddress.ipv4(interactions.server());
+    }
+
     public HttpRequestResponse kept(HttpRequestResponse exchange) {
         return copies.kept(exchange);
     }
@@ -72,7 +79,8 @@ public final class CollaboratorWatch {
         }
         Instant now = timing.clock().instant();
         if (register(new WatchedProbe(payloads, listener, CurrentScan.get(), now.plus(window().settle()),
-                now.plus(PENDING_LIFETIME)))) {
+                now.plus(PENDING_LIFETIME),
+                CurrentInvocation.retainingBeyondInvocation()))) {
             startTicking();
         }
     }
@@ -134,6 +142,7 @@ public final class CollaboratorWatch {
     private synchronized boolean register(WatchedProbe probe) {
         if (stopped) {
             interactions.forget(probe.payloads());
+            probe.release();
             return false;
         }
         if (watched.size() >= MAX_PENDING) {
@@ -187,6 +196,7 @@ public final class CollaboratorWatch {
     private void discard(WatchedProbe probe) {
         watched.remove(probe);
         interactions.forget(probe.payloads());
+        probe.release();
     }
 
     private InteractionWindow window() {

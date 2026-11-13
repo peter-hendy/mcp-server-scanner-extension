@@ -473,7 +473,7 @@ public class McpScannerTab extends JPanel {
 
     private void onExternalDisconnect() {
         if (state instanceof UiConnectionState.Connected) {
-            eventLog.warn("Connection lost: the MCP session ended");
+            eventLog.warn(McpClientManager.CONNECTION_LOST);
         }
         dispatch(UiAction.ExternalDisconnect.INSTANCE);
     }
@@ -753,8 +753,8 @@ public class McpScannerTab extends JPanel {
         }
 
         @Override
-        public Optional<Integer> plannedRequestCount(ScanInventory selection) {
-            return scans.plannedRequestCount(selection);
+        public Optional<PlannedRequests> plannedRequests(ScanInventory selection) {
+            return scans.plannedRequests(selection);
         }
 
         @Override

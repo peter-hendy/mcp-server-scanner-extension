@@ -1,9 +1,7 @@
-package com.mcpscanner.automation;
-
-import com.mcpscanner.identity.discovery.DiscoveryOutcome;
-import com.mcpscanner.identity.discovery.IdentityListings;
+package com.mcpscanner.identity.discovery;
 
 import java.time.Duration;
+import java.util.function.Predicate;
 
 public final class SettledListings {
 
@@ -17,18 +15,22 @@ public final class SettledListings {
     }
 
     public void await() {
+        await(identityId -> true);
+    }
+
+    public void await(Predicate<String> identityIds) {
         Runnable signal = this::signalChange;
         listings.addListener(signal);
         try {
-            awaitNoneDiscovering(System.nanoTime() + timeout.toNanos());
+            awaitNoneDiscovering(identityIds, System.nanoTime() + timeout.toNanos());
         } finally {
             listings.removeListener(signal);
         }
     }
 
-    private void awaitNoneDiscovering(long deadline) {
+    private void awaitNoneDiscovering(Predicate<String> identityIds, long deadline) {
         synchronized (changed) {
-            while (anyDiscovering()) {
+            while (anyDiscovering(identityIds)) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) {
                     throw new IllegalStateException("Identity discovery did not finish within " + timeout);
@@ -48,8 +50,9 @@ public final class SettledListings {
         }
     }
 
-    private boolean anyDiscovering() {
-        return listings.outcomes().values().stream().anyMatch(DiscoveryOutcome.Discovering.class::isInstance);
+    private boolean anyDiscovering(Predicate<String> identityIds) {
+        return listings.outcomes().entrySet().stream().filter(entry -> identityIds.test(entry.getKey()))
+                .anyMatch(entry -> entry.getValue() instanceof DiscoveryOutcome.Discovering);
     }
 
     private void signalChange() {

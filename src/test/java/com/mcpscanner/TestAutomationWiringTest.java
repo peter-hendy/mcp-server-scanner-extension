@@ -146,7 +146,7 @@ class TestAutomationWiringTest {
 
         assertThat(report.statusCode()).as(report.body()).isEqualTo(200);
         verify(http).sendRequest(any(HttpRequest.class));
-        verify(http, times(2)).sendRequest(any(HttpRequest.class), eq(HttpMode.HTTP_1), eq("mcp-scanner"));
+        verify(http, times(2)).sendRequest(any(HttpRequest.class), eq(HttpMode.HTTP_1), eq("mcp-scanner-http://127.0.0.1:9"));
     }
 
     @Test

@@ -53,7 +53,7 @@ public class McpScannerExtension implements BurpExtension {
         TestAutomationWiring automation = new TestAutomationWiring(testAutomation);
         OAuthWiring oauth = OAuthWiring.create(api, foundation, connection.burpHttp());
         IdentityWiring identities = IdentityWiring.create(api, foundation, connection, oauth);
-        AccessWiring access = AccessWiring.create(foundation, connection, identities.listings());
+        AccessWiring access = AccessWiring.create(foundation, connection, identities.listings(), identities.discovery());
         ScanFieldWiring fields = ScanFieldWiring.create(api, foundation);
         McpScanEngine engine = EngineWiring.create(api, foundation, connection.burpHttp(), fields.everyField());
         ScanningWiring scanning = ScanningWiring.create(api, foundation, connection, access, fields, engine,
@@ -86,6 +86,7 @@ public class McpScannerExtension implements BurpExtension {
         access.addShutdownHooks(shutdown);
         mining.addShutdownHooks(shutdown);
         connection.start(shutdown);
+        scanning.addShutdownHooks(shutdown);
         automation.startIfSwitchedOn(api, foundation, connection, scanning, access, mining, shutdown);
         oauth.addShutdownHooks(shutdown);
         identities.addShutdownHooks(shutdown);
@@ -100,10 +101,10 @@ public class McpScannerExtension implements BurpExtension {
     private static AccessServices accessServices(ExtensionFoundation foundation,
                                                  ConnectionWiring connection, IdentityWiring identities,
                                                  AccessWiring access, ScanningWiring scanning) {
-        OwnerRequests requests = access.sendToOwnerRequests(connection.scannerSession(), scanning);
+        OwnerRequests requests = access.sendToOwnerRequests(connection, scanning);
         return new AccessServices(access.matrix(), access.runner(connection, scanning),
                 requests, access.confirmations(), identities.discovery()::refreshAll,
-                () -> foundation.identities().identities().size());
+                foundation.identities()::otherUserCount);
     }
 
     private static MiningServices miningServices(ExtensionFoundation foundation, MiningWiring mining) {
@@ -158,7 +159,8 @@ public class McpScannerExtension implements BurpExtension {
                         oauth.authorizationGate()::reset),
                 scanning.sendToConnections(), oauth.optionalGrants()::create, DestructiveScanPrompt.MODAL,
                 BurpNetworkingPrompt.MODAL,
-                new IdentityDependencies(foundation.identities(), identities.listings(), foundation.toolCallRefusals(),
+                new IdentityDependencies(foundation.identities(), identities.listings(), identities.discovery(),
+                        foundation.toolCallRefusals(),
                         identities::credentialServices, ReconnectPrompt.MODAL),
                 scanning.scanOwnerArguments(), uiReads);
     }
