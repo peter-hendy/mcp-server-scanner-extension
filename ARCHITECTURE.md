@@ -97,7 +97,7 @@ List<AuditIssue> issues = new CheckRunner(http, new McpInsertionPointProvider():
 ## Test infrastructure
 
 - **Request budgets** (`performance/RequestBudgets`, part of `build`): Connect, every catalog check and a Check access item each have a request budget against in-process fixtures; exceeding one fails with a breakdown.
-- **CVE target harness** (`cve-targets/`, `src/test/java/com/mcpscanner/cvetargets`): real vulnerable/fixed Docker pairs, run directly through `CheckRunner` or through headless Burp Pro using the loopback-only `automation` API (`/scan-all`, `/audit`, `/check-access`). See [cve-targets/README.md](./cve-targets/README.md).
+- **CVE target harness** (`cve-targets/`, `src/test/java/com/mcpscanner/cvetargets`): real vulnerable/fixed Docker pairs, run directly through `CheckRunner` or through headless Burp Pro using the loopback-only `automation` API (`/scan-all`, `/audit`, `/check-access`), which lives in `src/automation/java` and ships only in the harness JAR. See [cve-targets/README.md](./cve-targets/README.md).
 - **Burp canary** (`burpCanary`): headless Burp against a local keep-alive server, failing if connection reuse is bypassed or sends serialise.
 - **Slow link** (`slowLinkTest`): runs Connect, Check access and a scan through a relay that adds latency per hop, failing any operation slower than its request count and declared concurrency allow, or any traffic that bypassed the relay.
 - **mTLS**: `MutualTlsConnectTest` in Java; `test-server/` serves HTTPS with client certificates for a manual Burp check.

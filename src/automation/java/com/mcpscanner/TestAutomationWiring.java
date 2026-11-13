@@ -30,7 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.UnaryOperator;
 
-final class TestAutomationWiring {
+public final class TestAutomationWiring implements ExtensionAutomation {
 
     private static final String LOOPBACK = "127.0.0.1";
     private static final Duration DISCOVERY_LIMIT = Duration.ofMinutes(5);
@@ -39,19 +39,26 @@ final class TestAutomationWiring {
     private final CheckTelemetry telemetry = CheckTelemetry.throughTheExtensionProxy();
     private final BaseRequestLedger launchedRequests = new BaseRequestLedger();
 
+    public TestAutomationWiring() {
+        this(TestAutomationSwitch.fromSystemProperties());
+    }
+
     TestAutomationWiring(TestAutomationSwitch automationSwitch) {
         this.automationSwitch = automationSwitch;
     }
 
-    CheckInstrumentation instrumentation() {
+    @Override
+    public CheckInstrumentation instrumentation() {
         return automationSwitch.port().isPresent() ? telemetry : CheckInstrumentation.NONE;
     }
 
-    UnaryOperator<ScanMessageRenderer> launchRenderer() {
+    @Override
+    public UnaryOperator<ScanMessageRenderer> launchRenderer() {
         return automationSwitch.port().isPresent() ? launchedRequests::recording : UnaryOperator.identity();
     }
 
-    void startIfSwitchedOn(MontoyaApi api, ExtensionFoundation foundation, ConnectionWiring connection,
+    @Override
+    public void startIfSwitchedOn(MontoyaApi api, ExtensionFoundation foundation, ConnectionWiring connection,
                            ScanningWiring scanning, AccessWiring access, MiningWiring mining, ShutdownHooks shutdown) {
         automationSwitch.port().ifPresent(port -> {
             BuiltInTrafficSink diversion = builtInTrafficSink(api, shutdown);

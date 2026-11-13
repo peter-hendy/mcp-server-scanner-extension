@@ -46,7 +46,7 @@ Each check has a toggle in the **Scan Checks** tab. Severity is the headline rat
 ./gradlew shadowJar
 ```
 
-Output: `build/libs/mcp-server-scanner-extension-2.1.1-all.jar`.
+Output: `build/libs/mcp-server-scanner-extension-2.1.2-all.jar`.
 
 Requires Java 17.
 
