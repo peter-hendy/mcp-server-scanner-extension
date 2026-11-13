@@ -116,7 +116,7 @@ final class McpScannerTabFixture {
     WriteCallPrompt minedWritePrompt = (parent, lines) -> {
         throw new AssertionError("Unexpected mined write-tool confirmation: " + lines.items());
     };
-    DestructiveScanPrompt scanPrompt = (parent, tools, count, invoker) -> {
+    ToolsPrompt scanPrompt = (parent, tools, count, invoker) -> {
         throw new AssertionError("Unexpected destructive-scan confirmation for " + tools);
     };
 
@@ -127,6 +127,12 @@ final class McpScannerTabFixture {
     ReconnectPrompt reconnectPrompt = (parent, user, previous) -> {
         throw new AssertionError("Unexpected reconnect prompt for " + user);
     };
+
+    @FunctionalInterface
+    interface ToolsPrompt {
+        DestructiveScanConfirmation.Result ask(java.awt.Component parent,
+                List<com.mcpscanner.mcp.McpToolDefinition> tools, int count, String invoker);
+    }
 
     McpScannerTabFixture() {
         MontoyaTestFactory.install();
@@ -192,7 +198,7 @@ final class McpScannerTabFixture {
                     public java.util.Set<String> minedArgumentsFor(com.mcpscanner.mcp.McpToolDefinition tool) {
                         return scanMinedArguments;
                     }
-                }, ManualReadScheduler.immediateReads()));
+                }, ManualReadScheduler.immediateReads(), TestDialogOwners.withoutSuiteFrame()));
     }
 
     private IdentityCredentialServices identityCredentials(SharedAuthSettings sharedClient,

@@ -2,6 +2,7 @@ package com.mcpscanner.ui.access;
 
 import com.mcpscanner.identity.EnteredValue;
 import com.mcpscanner.mcp.McpToolDefinition;
+import com.mcpscanner.ui.widgets.DialogOwner;
 import com.mcpscanner.ui.widgets.SwingHtmlGuard;
 
 import javax.swing.BoxLayout;
@@ -16,6 +17,7 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -25,10 +27,16 @@ final class ModalMiningDialogs implements MiningDialogs {
     static final String MINE_FIRST_BODY = "IDs have not been collected for these users on this connection, so requests "
             + "will carry schema defaults instead of real IDs.";
 
+    private final DialogOwner owner;
+
+    ModalMiningDialogs(DialogOwner owner) {
+        this.owner = Objects.requireNonNull(owner, "owner");
+    }
+
     @Override
     public MineFirstChoice mineFirst(Component parent, ToolsToCall tools) {
         Object[] options = {"Collect", "Continue without", "Cancel"};
-        int chosen = JOptionPane.showOptionDialog(parent, MiningSummary.withLead(MINE_FIRST_BODY, tools),
+        int chosen = JOptionPane.showOptionDialog(owner.of(parent), MiningSummary.withLead(MINE_FIRST_BODY, tools),
                 MINE_FIRST_TITLE, JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, options,
                 options[0]);
         return switch (chosen) {
@@ -41,14 +49,14 @@ final class ModalMiningDialogs implements MiningDialogs {
     @Override
     public boolean confirmMining(Component parent, ToolsToCall tools) {
         Object[] options = {"Collect", "Cancel"};
-        return JOptionPane.showOptionDialog(parent, MiningSummary.of(tools), "Collect IDs?",
+        return JOptionPane.showOptionDialog(owner.of(parent), MiningSummary.of(tools), "Collect IDs?",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[1]) == 0;
     }
 
     @Override
     public ClearChoice clearMined(Component parent, String userName) {
         Object[] options = {"Clear for " + userName, "Clear for all users", "Cancel"};
-        int chosen = JOptionPane.showOptionDialog(parent, "Delete collected IDs? Values you entered are kept.",
+        int chosen = JOptionPane.showOptionDialog(owner.of(parent), "Delete collected IDs? Values you entered are kept.",
                 "Clear collected IDs", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE, null,
                 options, options[2]);
         return switch (chosen) {
@@ -67,7 +75,7 @@ final class ModalMiningDialogs implements MiningDialogs {
         form.add(argument);
         form.add(new JLabel("Value"));
         form.add(value);
-        int chosen = JOptionPane.showConfirmDialog(parent, form, current.isPresent() ? "Edit value" : "Add value",
+        int chosen = JOptionPane.showConfirmDialog(owner.of(parent), form, current.isPresent() ? "Edit value" : "Add value",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         boolean complete = !argument.getText().isBlank() && !value.getText().isBlank();
         return chosen == JOptionPane.OK_OPTION && complete
@@ -83,7 +91,7 @@ final class ModalMiningDialogs implements MiningDialogs {
         boxes.forEach(list::add);
         JScrollPane scroller = new JScrollPane(list);
         scroller.setPreferredSize(new Dimension(360, Math.min(240, 28 * Math.max(3, tools.size()))));
-        int chosen = JOptionPane.showConfirmDialog(parent, scroller, "Write tools collecting may call",
+        int chosen = JOptionPane.showConfirmDialog(owner.of(parent), scroller, "Write tools collecting may call",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (chosen != JOptionPane.OK_OPTION) {
             return Optional.empty();

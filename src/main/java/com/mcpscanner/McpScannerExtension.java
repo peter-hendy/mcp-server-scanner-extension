@@ -8,6 +8,7 @@ import com.mcpscanner.client.servercard.ServerCardFetcher;
 import com.mcpscanner.engine.McpScanEngine;
 import com.mcpscanner.ui.BurpNetworkingPrompt;
 import com.mcpscanner.ui.DestructiveScanPrompt;
+import com.mcpscanner.ui.widgets.DialogOwner;
 import com.mcpscanner.ui.IdentityDependencies;
 import com.mcpscanner.ui.McpScannerTab;
 import com.mcpscanner.ui.McpScannerTabDependencies;
@@ -71,7 +72,7 @@ public class McpScannerExtension implements BurpExtension {
         McpScannerTab tab = registerUiOnEdt(api, foundation, connection, scanning, oauth, identities,
                 backgroundReads);
         AccessServices accessServices = accessServices(foundation, connection, identities, access, scanning)
-                .withMining(miningServices(foundation, mining));
+                .withMining(miningServices(api, foundation, mining));
         ScansServices scansServices = scansServices(api, foundation, engine);
         onEdt(api, () -> {
             tab.installAccess(accessServices);
@@ -107,9 +108,9 @@ public class McpScannerExtension implements BurpExtension {
                 foundation.identities()::otherUserCount);
     }
 
-    private static MiningServices miningServices(ExtensionFoundation foundation, MiningWiring mining) {
+    private static MiningServices miningServices(MontoyaApi api, ExtensionFoundation foundation, MiningWiring mining) {
         return new MiningServices(mining.mining(), mining.ownedValues(), foundation.identities()::identities,
-                MiningDialogs.MODAL);
+                MiningDialogs.modal(dialogOwner(api)));
     }
 
     private static ScansServices scansServices(MontoyaApi api, ExtensionFoundation foundation, McpScanEngine engine) {
@@ -117,6 +118,10 @@ public class McpScannerExtension implements BurpExtension {
                 new SwingTargetNavigator(() -> api.userInterface().swingUtils().suiteFrame(), foundation.eventLog()::debug,
                         new SwingDelay()),
                 MessageEditors.readOnly(api.userInterface()));
+    }
+
+    private static DialogOwner dialogOwner(MontoyaApi api) {
+        return new DialogOwner(() -> api.userInterface().swingUtils().suiteFrame());
     }
 
     private static void onEdt(MontoyaApi api, Runnable task) {
@@ -156,13 +161,13 @@ public class McpScannerExtension implements BurpExtension {
                 foundation.eventLog(), scanning.authHolder(), scanning.generationSettings(), scanning.scanModeSetting(),
                 scanning.requestRenderer(),
                 ServerConfigPanel.create(foundation.configStore(), oauth.authorizationFlow(), oauth.discoverer(),
-                        oauth.authorizationGate()::reset),
-                scanning.sendToConnections(), oauth.optionalGrants()::create, DestructiveScanPrompt.MODAL,
-                BurpNetworkingPrompt.MODAL,
+                        oauth.authorizationGate()::reset, dialogOwner(api)),
+                scanning.sendToConnections(), oauth.optionalGrants()::create, DestructiveScanPrompt.modal(dialogOwner(api)),
+                BurpNetworkingPrompt.modal(dialogOwner(api)),
                 new IdentityDependencies(foundation.identities(), identities.listings(), identities.discovery(),
                         foundation.toolCallRefusals(),
-                        identities::credentialServices, ReconnectPrompt.MODAL),
-                scanning.scanOwnerArguments(), uiReads);
+                        identities::credentialServices, ReconnectPrompt.modal(dialogOwner(api))),
+                scanning.scanOwnerArguments(), uiReads, dialogOwner(api));
     }
 
     private static McpScannerTab registerUi(MontoyaApi api, ExtensionFoundation foundation,

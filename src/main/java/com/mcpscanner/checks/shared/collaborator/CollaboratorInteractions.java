@@ -69,6 +69,10 @@ final class CollaboratorInteractions {
         return client().map(active -> pollIfDue(active, minimumInterval)).orElse(false);
     }
 
+    public Duration untilPollDue(Duration minimumInterval) {
+        return polls.untilDue(minimumInterval);
+    }
+
     public ObservedInteractions received(Collection<CollaboratorPayload> payloads) {
         Set<String> ids = idsOf(payloads);
         synchronized (pollLock) {
